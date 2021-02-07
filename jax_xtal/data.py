@@ -5,10 +5,9 @@ from functools import lru_cache
 import numpy as np
 import pandas as pd
 from pymatgen.core import Structure
-from pymatgen.core.periodic_table import Element
 from pymatgen.analysis.local_env import NearNeighbors
 from pymatgen.analysis.graphs import StructureGraph
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 
 
 class AtomFeaturizer:
@@ -19,10 +18,11 @@ class AtomFeaturizer:
     ----------
     atom_features_json: path to the precomputed "atom_init.json"
     """
+
     def __init__(self, atom_features_json: str):
         if not os.path.exists(atom_features_json):
             raise FileNotFoundError("atom_features_json not found:", atom_features_json)
-        with open(atom_features_json, 'r') as f:
+        with open(atom_features_json, "r") as f:
             self._lookup_table = json.load(f)
 
     def _get_atom_feature(self, number: int):
@@ -30,7 +30,7 @@ class AtomFeaturizer:
 
     @property
     def num_atom_features(self):
-        return len(self._lookup_table['1'])  # '1' means hydrogen
+        return len(self._lookup_table["1"])  # '1' means hydrogen
 
     def __call__(self, structure: Structure):
         """
@@ -57,6 +57,7 @@ class BondFeaturizer:
     num_filters: number of gaussian filters
     blur: variance of gaussian filters
     """
+
     def __init__(self, dmin: float, dmax: float, num_filters: int, blur=None):
         assert dmin < dmax
         assert num_filters >= 2
@@ -76,7 +77,7 @@ class BondFeaturizer:
 
     def _expand_by_basis(self, distances):
         # (max_num_neighbors, num_bond_features) is returned
-        return np.exp(-((distances[:, None] - self._filter[None, :]) / self._blur) ** 2)
+        return np.exp(-(((distances[:, None] - self._filter[None, :]) / self._blur) ** 2))
 
     def __call__(self, graph: StructureGraph, max_num_neighbors: int):
         """
@@ -104,7 +105,9 @@ class BondFeaturizer:
             else:
                 padded_neighbors = neighbors[:max_num_neighbors]
 
-            bond_features.append(self._expand_by_basis(np.array([pn[0] for pn in padded_neighbors])))
+            bond_features.append(
+                self._expand_by_basis(np.array([pn[0] for pn in padded_neighbors]))
+            )
             neighbor_indices.append([pn[1] for pn in padded_neighbors])
 
         bond_features = np.array(bond_features)
@@ -116,6 +119,7 @@ class CutoffNN(NearNeighbors):
     """
     An extremely simple NN class only using cutoff radius
     """
+
     def __init__(self, cutoff: float):
         self._cutoff = cutoff
 
@@ -185,6 +189,7 @@ class CrystalDataset(Dataset):
     structures_dir:
     targets_csv_path: comma delimiter, no header
     """
+
     def __init__(
         self,
         structures_dir: str,
@@ -192,8 +197,8 @@ class CrystalDataset(Dataset):
         atom_featurizer: AtomFeaturizer,
         bond_featurizer: BondFeaturizer,
         neighbor_strategy: NearNeighbors,
-        max_num_neighbors=12,
-        seed=0
+        max_num_neighbors: int,
+        seed=0,
     ):
         if not os.path.exists(structures_dir):
             raise FileNotFoundError(f"structures_dir does not exist: {structures_dir}")
@@ -204,10 +209,7 @@ class CrystalDataset(Dataset):
 
         # load targets and shuffle indices
         _targets = pd.read_csv(
-            self._targets_csv_path,
-            sep=',',
-            header=None,
-            names=['id', 'target']
+            self._targets_csv_path, sep=",", header=None, names=["id", "target"]
         )
         rng_np = np.random.default_rng(seed)
         self._targets = _targets.iloc[rng_np.permutation(len(_targets))].reset_index(drop=True)
@@ -223,9 +225,9 @@ class CrystalDataset(Dataset):
     @lru_cache()
     def __getitem__(self, idx):
         # load structure
-        structure_json_basename = self._targets.iloc[idx]['id'] + '.json'
+        structure_json_basename = self._targets.iloc[idx]["id"] + ".json"
         structure_json_path = os.path.join(self._structures_dir, structure_json_basename)
-        with open(structure_json_path, 'r') as f:
+        with open(structure_json_path, "r") as f:
             structure = Structure.from_dict(json.load(f))
 
         initial_atom_features = self._atom_featurizer(structure)
@@ -234,27 +236,113 @@ class CrystalDataset(Dataset):
         graph = StructureGraph.with_local_env_strategy(structure, self._neighbor_strategy)
         bond_features, neighbor_indices = self._bond_featurizer(graph, self._max_num_neighbors)
 
-        target = self._targets.iloc[idx]['target']
+        target = self._targets.iloc[idx]["target"]
 
         data = {
-            'id': self._targets.iloc[idx]['id'],
-            'neighbor_indices': neighbor_indices,  # (num_atoms, max_num_neighbors)
-            'initial_atom_features': initial_atom_features,  # (num_atoms, num_atom_features)
-            'bond_features': bond_features,  # (num_atoms, max_num_neighbors, num_bond_features)
-            'target': target,
+            "id": self._targets.iloc[idx]["id"],
+            "neighbor_indices": neighbor_indices,  # (num_atoms, max_num_neighbors)
+            "initial_atom_features": initial_atom_features,  # (num_atoms, num_atom_features)
+            "bond_features": bond_features,  # (num_atoms, max_num_neighbors, num_bond_features)
+            "target": target,
         }
         return data
 
 
-if __name__ == '__main__':
+def get_dataloaders(
+    dataset: CrystalDataset,
+    batch_size=1,
+    train_ratio=0.6,
+    val_ratio=0.2,
+    test_ratio=0.2,
+    num_workers=0,
+    pin_memory=False,
+):
+    assert train_ratio + val_ratio + test_ratio <= 1.0
+    total_size = len(dataset)
+    train_size = int(train_ratio * total_size)
+    val_size = int(val_ratio * total_size)
+    test_size = int(test_ratio * total_size)
+
+    indices = list(range(total_size))
+    train_sampler = SubsetRandomSampler(indices[:train_size])
+    val_sampler = SubsetRandomSampler(indices[train_size : (train_size + val_size)])
+    test_sampler = SubsetRandomSampler(indices[-test_size:])
+
+    train_loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        sampler=train_sampler,
+        num_workers=num_workers,
+        collate_fn=collate_pool,
+        pin_memory=pin_memory,
+    )
+    val_loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        sampler=val_sampler,
+        num_workers=num_workers,
+        collate_fn=collate_pool,
+        pin_memory=pin_memory,
+    )
+    test_loader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        sampler=test_sampler,
+        num_workers=num_workers,
+        collate_fn=collate_pool,
+        pin_memory=pin_memory,
+    )
+
+    return train_loader, val_loader, test_loader
+
+
+def collate_pool(samples):
+    batch_ids = []
+    batch_neighbor_indices = []
+    batch_initial_atom_features = []
+    batch_bond_features = []
+    batch_targets = []
+    atom_indices = []
+
+    index_offset = 0
+    for data in samples:
+        batch_ids.append(data["id"])
+        batch_initial_atom_features.append(data["initial_atom_features"])
+        batch_bond_features.append(data["bond_features"])
+        batch_targets.append(data["target"])
+        batch_neighbor_indices.append(data["neighbor_indices"] + index_offset)
+
+        num_atoms_i = data["initial_atom_features"].shape[0]
+        atom_indices.append(np.arange(num_atoms_i) + index_offset)
+
+        index_offset += num_atoms_i
+
+    batch_data = {
+        "id": np.array(batch_ids),
+        "neighbor_indices": np.array(batch_neighbor_indices),
+        "initial_atom_features": np.array(batch_initial_atom_features),
+        "bond_features": np.array(batch_bond_features),
+        "target": np.array(batch_targets),
+        "atom_indices": atom_indices,
+    }
+    return batch_data
+
+
+if __name__ == "__main__":
     neighbor_strategy = CutoffNN(cutoff=6.0)
-    atom_featurizer = AtomFeaturizer('../data/atom_init.json')
+    atom_featurizer = AtomFeaturizer("../data/atom_init.json")
     bond_featurizer = BondFeaturizer(dmin=0.7, dmax=5.2, num_filters=10)
     dataset = CrystalDataset(
-        '../data/structures_dummy',
-        '../data/targets_dummy.csv',
+        "../data/structures_dummy",
+        "../data/targets_dummy.csv",
         atom_featurizer=atom_featurizer,
         bond_featurizer=bond_featurizer,
-        neighbor_strategy=neighbor_strategy
+        neighbor_strategy=neighbor_strategy,
+        max_num_neighbors=12,
     )
-    print(dataset[0])
+
+    train_loader, val_loader, test_loader = get_dataloaders(dataset, batch_size=2)
+    for batch in train_loader:
+        import pdb
+
+        pdb.set_trace()
