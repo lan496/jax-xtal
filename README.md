@@ -16,3 +16,11 @@ docker build -t jax-xtal -f docker/Dockerfile .
 docker run -it --gpus all -v $(pwd):/workspace --name jax-xtal jax-xtal
 docker attach jax-xtal
 ```
+
+## Dataset
+
+### Prepare initial one-hot vectors for atomic features
+`data/atom_init.json` is created by the following command.
+```
+python prepare_atom_features.py
+```

@@ -1,3 +1,5 @@
 flake8
 pre-commit
 black
+mendeleev
+scikit-learn
