@@ -1,0 +1,6 @@
+flax==0.3.0
+jax==0.2.9
+jaxlib==0.1.59
+numpy
+torch==1.7.1+cpu
+pymatgen==2020.12.31
