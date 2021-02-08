@@ -29,10 +29,16 @@ def mean_squared_error(predictions, targets):
     return jnp.mean(jnp.square(predictions - targets), axis=None)
 
 
+def mean_absolute_error(predictions, targets):
+    return jnp.mean(jnp.abs(predictions - targets), axis=None)
+
+
 def compute_metrics(predictions, targets):
-    mae = mean_squared_error(predictions, targets)
+    mse = mean_squared_error(predictions, targets)
+    mae = mean_absolute_error(predictions, targets)
     metrics = {
-        "loss": mae,
+        "loss": mse,
+        "mae": mae,
     }
     return metrics
 
@@ -122,7 +128,7 @@ def eval_model(val_step_fn, state: TrainState, val_loader):
         eval_metrics.append(metrics)
     eval_metrics = jax.device_get(eval_metrics)
     eval_summary = jax.tree_map(lambda x: x.mean(), eval_metrics)[0]
-    return eval_summary["loss"]
+    return eval_summary
 
 
 def initialize_model(key, model, max_num_neighbors, num_initial_atom_features, num_bond_features):

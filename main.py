@@ -76,6 +76,9 @@ if __name__ == "__main__":
     for epoch in range(1, num_epochs + 1):
         state, train_summary = train_one_epoch(train_step_fn, state, train_loader, epoch)
         train_loss = train_summary["loss"]
-        print("Training - epoch: %2d, loss: %.2f" % (epoch, train_loss))
-        val_loss = eval_model(val_step_fn, state, val_loader)
-        print("Testing  - epoch: %2d, loss: %.2f" % (epoch, val_loss))
+        train_mae = train_summary["mae"]
+        print("Training - epoch: %2d, loss: %.2f, MAE: %.2f" % (epoch, train_loss, train_mae))
+        val_summary = eval_model(val_step_fn, state, val_loader)
+        val_loss = val_summary["loss"]
+        val_mae = val_summary["mae"]
+        print("Testing  - epoch: %2d, loss: %.2f, MAE: %.2f" % (epoch, val_loss, val_mae))

@@ -318,7 +318,7 @@ def collate_pool(samples):
         - "atom_features": (N, num_atom_features)
         - "bond_features": (N, max_num_neighbors, num_bond_features)
         - "atom_indices"
-        - "target": (batch_size, )
+        - "target": (batch_size, 1)
         where N is the total number of atoms in the samples
     """
     batch_ids = []
@@ -346,7 +346,7 @@ def collate_pool(samples):
         "neighbor_indices": np.concatenate(batch_neighbor_indices, axis=0),
         "atom_features": np.concatenate(batch_atom_features, axis=0),
         "bond_features": np.concatenate(batch_bond_features, axis=0),
-        "target": np.array(batch_targets),
+        "target": np.array(batch_targets)[:, None],
         "atom_indices": atom_indices,
     }
     return batch_data
