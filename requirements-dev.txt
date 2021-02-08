@@ -3,3 +3,4 @@ pre-commit
 black
 mendeleev
 scikit-learn
+pytest>=6.0

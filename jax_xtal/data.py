@@ -346,23 +346,3 @@ def collate_pool(samples):
         "atom_indices": atom_indices,
     }
     return batch_data
-
-
-if __name__ == "__main__":
-    neighbor_strategy = CutoffNN(cutoff=6.0)
-    atom_featurizer = AtomFeaturizer("../data/atom_init.json")
-    bond_featurizer = BondFeaturizer(dmin=0.7, dmax=5.2, num_filters=10)
-    dataset = CrystalDataset(
-        "../data/structures_dummy",
-        "../data/targets_dummy.csv",
-        atom_featurizer=atom_featurizer,
-        bond_featurizer=bond_featurizer,
-        neighbor_strategy=neighbor_strategy,
-        max_num_neighbors=12,
-    )
-
-    train_loader, val_loader, test_loader = get_dataloaders(dataset, batch_size=2)
-    for batch in train_loader:
-        import pdb
-
-        pdb.set_trace()
