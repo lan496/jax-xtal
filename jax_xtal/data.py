@@ -224,6 +224,10 @@ class CrystalDataset(Dataset):
     def __len__(self):
         return len(self._targets)
 
+    @property
+    def num_initial_atom_features(self):
+        return self._atom_featurizer.num_initial_atom_features
+
     @lru_cache()
     def __getitem__(self, idx):
         # load structure

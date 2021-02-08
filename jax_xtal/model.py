@@ -94,7 +94,7 @@ class CGCNN(nn.Module):
         atom_features = nn.Dense(self.num_atom_features, name="embedding")(atom_features)
         for i in range(self.num_convs):
             atom_features = CGConv(name=f"conv_{i}")(
-                neighbor_indices, atom_features, bond_features
+                neighbor_indices, atom_features, bond_features, train
             )
 
         crystal_features = CGPooling()(atom_features, atom_indices)
