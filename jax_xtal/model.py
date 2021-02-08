@@ -1,27 +1,26 @@
 from functools import partial
 
 from flax import linen as nn
-from flax.linen import Dense, sigmoid, BatchNorm, softplus
+from flax.linen import Dense, Embed, BatchNorm, softplus, sigmoid
 import jax
 import jax.numpy as jnp
 
 
-class MultiNeighborConv(nn.Module):
+class CGConv(nn.Module):
     """
     Convolutional layer in Eq. (5)
     """
 
     @nn.compact
-    def __call__(self, inputs, train: bool = True):
+    def __call__(self, neighbor_indices, atom_features, bond_features, train: bool = True):
+        """
+        Let the total number of atoms in the batch be N,
+        neighbor_indices: (N, max_num_neighbors)
+        atom_features: (N, num_atom_features)
+        bond_features: (N, max_num_neighbors, num_bond_features)
+        """
         norm = partial(BatchNorm, use_running_average=not train)
 
-        # let the total number of atoms in the batch be N,
-        # neighbor_indices: (N, max_num_neighbors)
-        # atom_features: (N, num_atom_features)
-        # bond_features: (N, max_num_neighbors, num_bond_features)
-        neighbor_indices = inputs["neighbor_indices"]
-        atom_features = inputs["atom_features"]
-        bond_features = inputs["bond_features"]
         num_atoms_batch, max_num_neighbors = neighbor_indices.shape
         num_atom_features = atom_features.shape[1]
 
@@ -54,6 +53,59 @@ class MultiNeighborConv(nn.Module):
         return out
 
 
+class CGPooling(nn.Module):
+    """
+    average-pooling over each crystal in a batch
+    """
+
+    @nn.compact
+    def __call__(self, atom_features, atom_indices):
+        """
+        Parameters
+        ----------
+        atom_features: (N, num_atom_features)
+        atom_indices: list with batch_size length
+
+        Returns
+        -------
+        averaged_features: (batch_size, 1)
+        """
+        averaged_features = [
+            jnp.mean(atom_features[indices, :], axis=0, keepdims=True) for indices in atom_indices
+        ]
+        averaged_features = jnp.concatenate(averaged_features, axis=0)
+        return averaged_features
+
+
+class CGCNN(nn.Module):
+    """
+    Crystal Graph Convolutional Neural Network
+    """
+
+    num_atom_features: int
+    num_convs: int
+    num_hidden_layers: int
+    num_hidden_features: int
+
+    @nn.compact
+    def __call__(
+        self, neighbor_indices, atom_features, bond_features, atom_indices, train: bool = True
+    ):
+        atom_features = nn.Dense(self.num_atom_features, name="embedding")(atom_features)
+        for i in range(self.num_convs):
+            atom_features = CGConv(name=f"conv_{i}")(
+                neighbor_indices, atom_features, bond_features
+            )
+
+        crystal_features = CGPooling()(atom_features, atom_indices)
+        crystal_features = softplus(crystal_features)
+        for i in range(self.num_hidden_layers):
+            crystal_features = nn.Dense(self.num_hidden_features, name=f"fc_{i}")(crystal_features)
+            crystal_features = softplus(crystal_features)
+        out = nn.Dense(1, name="fc_last")(crystal_features)
+        return out
+
+
 if __name__ == "__main__":
     from data import CutoffNN, AtomFeaturizer, BondFeaturizer, CrystalDataset, get_dataloaders
     import numpy as np
@@ -74,14 +126,23 @@ if __name__ == "__main__":
 
     train_loader, val_loader, test_loader = get_dataloaders(dataset, batch_size=2)
     for batch in train_loader:
-        model = MultiNeighborConv()
-        inputs = {
-            "neighbor_indices": batch["neighbor_indices"],
-            "atom_features": batch["atom_features"],
-            "bond_features": batch["bond_features"],
-        }
-        params = model.init(rng, inputs)
-        out = model.apply(params, inputs, mutable=["batch_stats"])
+        neighbor_indices = batch["neighbor_indices"]
+        atom_features = batch["atom_features"]
+        bond_features = batch["bond_features"]
+        atom_indices = batch["atom_indices"]
+
+        model = CGCNN(
+            num_atom_features=2, num_convs=1, num_hidden_layers=1, num_hidden_features=64
+        )
+        params = model.init(rng, neighbor_indices, atom_features, bond_features, atom_indices)
+        out = model.apply(
+            params,
+            neighbor_indices,
+            atom_features,
+            bond_features,
+            atom_indices,
+            mutable=["batch_stats"],
+        )
 
         import pdb
 

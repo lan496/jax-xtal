@@ -29,7 +29,7 @@ class AtomFeaturizer:
         return self._lookup_table[str(number)]
 
     @property
-    def num_atom_features(self):
+    def num_initial_atom_features(self):
         return len(self._lookup_table["1"])  # '1' means hydrogen
 
     def __call__(self, structure: Structure):
