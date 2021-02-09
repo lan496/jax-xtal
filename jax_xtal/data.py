@@ -58,7 +58,7 @@ class BondFeaturizer:
     blur: variance of gaussian filters
     """
 
-    def __init__(self, dmin: float, dmax: float, num_filters: int, blur=None):
+    def __init__(self, dmin: float = 0.7, dmax: float = 5.2, num_filters: int = 10, blur=None):
         assert dmin < dmax
         assert num_filters >= 2
         self._dmin = dmin
@@ -122,7 +122,7 @@ class CutoffNN(NearNeighbors):
     # TODO: procedure to create graph in official implementation differs from that in SI.Sec.I.A.
     """
 
-    def __init__(self, cutoff: float):
+    def __init__(self, cutoff: float = 6.0):
         self._cutoff = cutoff
 
     @property
@@ -188,38 +188,55 @@ class CrystalDataset(Dataset):
     """
     Parameters
     ----------
+    atom_featurizer:
+        convert atom into one-hot vector
+    bond_featurizer:
+        convert bond infromation into one-hot vector
+    neighbor_strategy:
+        inherite pymatgen's NearNeighbors class, which find neighbors of each atom with some criterion
+    max_num_neighbors:
+        maximum number of neighbors for each atom in cosideration
     structures_dir:
-    targets_csv_path: comma delimiter, no header
+        path for json files of pymatgen's structures
+    targets_csv_path:
+        comma delimiter, no header
+    train: bool
+        if set False, targets_csv_path is not read.
+    seed: int
     """
 
     def __init__(
         self,
-        structures_dir: str,
-        targets_csv_path: str,
         atom_featurizer: AtomFeaturizer,
         bond_featurizer: BondFeaturizer,
         neighbor_strategy: NearNeighbors,
-        max_num_neighbors: int,
+        structures_dir: str,
+        targets_csv_path: str = "",
+        train: bool = True,
+        max_num_neighbors: int = 12,
         seed=0,
     ):
         if not os.path.exists(structures_dir):
             raise FileNotFoundError(f"structures_dir does not exist: {structures_dir}")
-        if not os.path.exists(targets_csv_path):
-            raise FileNotFoundError(f"targets_csv_path does not exist: {targets_csv_path}")
         self._structures_dir = structures_dir
-        self._targets_csv_path = targets_csv_path
-
-        # load targets and shuffle indices
-        _targets = pd.read_csv(
-            self._targets_csv_path, sep=",", header=None, names=["id", "target"]
-        )
-        rng_np = np.random.default_rng(seed)
-        self._targets = _targets.iloc[rng_np.permutation(len(_targets))].reset_index(drop=True)
 
         self._atom_featurizer = atom_featurizer
         self._bond_featurizer = bond_featurizer
         self._neighbor_strategy = neighbor_strategy
         self._max_num_neighbors = max_num_neighbors
+
+        self._train = train
+        if self._train:
+            if not os.path.exists(targets_csv_path):
+                raise FileNotFoundError(f"targets_csv_path does not exist: {targets_csv_path}")
+            self._targets_csv_path = targets_csv_path
+
+            # load targets and shuffle indices
+            _targets = pd.read_csv(
+                self._targets_csv_path, sep=",", header=None, names=["id", "target"]
+            )
+            rng_np = np.random.default_rng(seed)
+            self._targets = _targets.iloc[rng_np.permutation(len(_targets))].reset_index(drop=True)
 
     def __len__(self):
         return len(self._targets)
@@ -242,15 +259,17 @@ class CrystalDataset(Dataset):
         graph = StructureGraph.with_local_env_strategy(structure, self._neighbor_strategy)
         bond_features, neighbor_indices = self._bond_featurizer(graph, self._max_num_neighbors)
 
-        target = self._targets.iloc[idx]["target"]
-
         data = {
             "id": self._targets.iloc[idx]["id"],
             "neighbor_indices": neighbor_indices,  # (num_atoms, max_num_neighbors)
             "atom_features": initial_atom_features,  # (num_atoms, num_atom_features)
             "bond_features": bond_features,  # (num_atoms, max_num_neighbors, num_bond_features)
-            "target": target,
         }
+
+        if self._train:
+            target = self._targets.iloc[idx]["target"]
+            data["target"] = target
+
         return data
 
 
@@ -302,7 +321,7 @@ def get_dataloaders(
     return train_loader, val_loader, test_loader
 
 
-def collate_pool(samples):
+def collate_pool(samples, train=True):
     """
     relabel atoms in a batch
 
@@ -333,8 +352,9 @@ def collate_pool(samples):
         batch_ids.append(data["id"])
         batch_atom_features.append(data["atom_features"])
         batch_bond_features.append(data["bond_features"])
-        batch_targets.append(data["target"])
         batch_neighbor_indices.append(data["neighbor_indices"] + index_offset)
+        if train:
+            batch_targets.append(data["target"])
 
         num_atoms_i = data["atom_features"].shape[0]
         atom_indices.append(np.arange(num_atoms_i) + index_offset)
@@ -346,7 +366,9 @@ def collate_pool(samples):
         "neighbor_indices": np.concatenate(batch_neighbor_indices, axis=0),
         "atom_features": np.concatenate(batch_atom_features, axis=0),
         "bond_features": np.concatenate(batch_bond_features, axis=0),
-        "target": np.array(batch_targets)[:, None],
         "atom_indices": atom_indices,
     }
+    if train:
+        batch_data["target"] = np.array(batch_targets)[:, None]
+
     return batch_data

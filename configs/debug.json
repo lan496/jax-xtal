@@ -1,0 +1,9 @@
+{
+    "structures_dir": "data/structures_dummy",
+    "targets_csv_path": "data/targets_dummy.csv",
+    "num_atom_features": 2,
+    "num_convs": 1,
+    "num_hidden_layers": 4,
+    "num_epochs": 10,
+    "batch_size": 2
+}

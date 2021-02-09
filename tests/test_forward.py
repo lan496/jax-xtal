@@ -12,11 +12,11 @@ def test_cgcnn_forward():
     atom_featurizer = AtomFeaturizer(os.path.join(root_dir, "data", "atom_init.json"))
     bond_featurizer = BondFeaturizer(dmin=0.7, dmax=5.2, num_filters=10)
     dataset = CrystalDataset(
-        os.path.join(root_dir, "data", "structures_dummy"),
-        os.path.join(root_dir, "data", "targets_dummy.csv"),
         atom_featurizer=atom_featurizer,
         bond_featurizer=bond_featurizer,
         neighbor_strategy=neighbor_strategy,
+        structures_dir=os.path.join(root_dir, "data", "structures_dummy"),
+        targets_csv_path=os.path.join(root_dir, "data", "targets_dummy.csv"),
         max_num_neighbors=12,
     )
 

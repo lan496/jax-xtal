@@ -1,9 +1,11 @@
+import os
 from typing import Any
 
 import jax
 import jax.numpy as jnp
 import flax
 from flax import optim
+from flax import serialization
 
 from jax_xtal.model import CGCNN
 from jax_xtal.data import get_dataloaders
@@ -139,7 +141,9 @@ def initialize_model(key, model, max_num_neighbors, num_initial_atom_features, n
     bond_features = jnp.zeros((1, max_num_neighbors, num_bond_features), dtype=dtype)
     atom_indices = [jnp.array([0])]
 
-    variables = model.init(key, neighbor_indices, atom_features, bond_features, atom_indices)
+    variables = model.init(
+        key, neighbor_indices, atom_features, bond_features, atom_indices, train=False
+    )
     model_state, params = variables.pop("params")
     return params, model_state
 
@@ -158,3 +162,12 @@ def create_train_state(
     optimizer = create_optimizer(params, learning_rate=learning_rate)
     state = TrainState(step=0, optimizer=optimizer, model_state=model_state)
     return state
+
+
+def save_checkpoint(optimizer: optim.Optimizer, workdir: str, step: int):
+    ckpt_path = os.path.join(workdir, f"checkpoint_{step}.flax")
+    with open(ckpt_path, "wb") as f:
+        f.write(serialization.to_bytes(optimizer.target))
+
+
+# def restore_checkpoint(ckpt_path: str, )
