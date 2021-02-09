@@ -110,6 +110,21 @@ def eval_one_step(apply_fn, batch, state: TrainState):
     return compute_metrics(predictions, batch["target"])
 
 
+def predict_one_step(apply_fn, batch, state: TrainState):
+    params = state.optimizer.target
+    variables = {"params": params, **state.model_state}
+    predictions = apply_fn(
+        variables,
+        batch["neighbor_indices"],
+        batch["atom_features"],
+        batch["bond_features"],
+        batch["atom_indices"],
+        train=False,
+        mutable=False,
+    )
+    return predictions
+
+
 def train_one_epoch(train_step_fn, state: TrainState, train_loader, epoch):
     train_metrics = []
     for batch in train_loader:
@@ -131,6 +146,16 @@ def eval_model(val_step_fn, state: TrainState, val_loader):
     eval_metrics = jax.device_get(eval_metrics)
     eval_summary = jax.tree_map(lambda x: x.mean(), eval_metrics)[0]
     return eval_summary
+
+
+def predict_dataset(test_step_fn, state: TrainState, dataloader):
+    test_predictions = []
+    for batch in dataloader:
+        batch.pop("id")  # pop unused entry
+        predictions = test_step_fn(batch=batch, state=state)
+        test_predictions.append(predictions)
+    predictions = jnp.concatenate(test_predictions)  # (len(dataloader), 1)
+    return predictions
 
 
 def initialize_model(key, model, max_num_neighbors, num_initial_atom_features, num_bond_features):
@@ -164,10 +189,14 @@ def create_train_state(
     return state
 
 
-def save_checkpoint(optimizer: optim.Optimizer, workdir: str, step: int):
+def save_checkpoint(state: TrainState, workdir: str):
+    step = state.step
     ckpt_path = os.path.join(workdir, f"checkpoint_{step}.flax")
     with open(ckpt_path, "wb") as f:
-        f.write(serialization.to_bytes(optimizer.target))
+        f.write(serialization.to_bytes(state))
 
 
-# def restore_checkpoint(ckpt_path: str, )
+def restore_checkpoint(ckpt_path: str, state: TrainState) -> TrainState:
+    with open(ckpt_path, "rb") as f:
+        restored_state = serialization.from_bytes(state, f.read())
+    return restored_state

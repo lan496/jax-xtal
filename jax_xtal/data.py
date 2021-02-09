@@ -1,6 +1,7 @@
 import json
 import os
 from functools import lru_cache
+from glob import glob
 
 import numpy as np
 import pandas as pd
@@ -237,18 +238,29 @@ class CrystalDataset(Dataset):
             )
             rng_np = np.random.default_rng(seed)
             self._targets = _targets.iloc[rng_np.permutation(len(_targets))].reset_index(drop=True)
+            self._ids = self._targets["id"].tolist()
+        else:
+            self._ids = list(
+                [
+                    os.path.basename(path).split(".")[0]
+                    for path in glob(os.path.join(structures_dir, "*.json"))
+                ]
+            )
 
     def __len__(self):
-        return len(self._targets)
+        return len(self._ids)
 
     @property
     def num_initial_atom_features(self):
         return self._atom_featurizer.num_initial_atom_features
 
+    def get_id_list(self):
+        return self._ids
+
     @lru_cache()
     def __getitem__(self, idx):
         # load structure
-        structure_json_basename = self._targets.iloc[idx]["id"] + ".json"
+        structure_json_basename = self._ids[idx] + ".json"
         structure_json_path = os.path.join(self._structures_dir, structure_json_basename)
         with open(structure_json_path, "r") as f:
             structure = Structure.from_dict(json.load(f))
@@ -260,7 +272,7 @@ class CrystalDataset(Dataset):
         bond_features, neighbor_indices = self._bond_featurizer(graph, self._max_num_neighbors)
 
         data = {
-            "id": self._targets.iloc[idx]["id"],
+            "id": self._ids[idx],
             "neighbor_indices": neighbor_indices,  # (num_atoms, max_num_neighbors)
             "atom_features": initial_atom_features,  # (num_atoms, num_atom_features)
             "bond_features": bond_features,  # (num_atoms, max_num_neighbors, num_bond_features)

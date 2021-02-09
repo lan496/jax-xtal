@@ -105,8 +105,8 @@ if __name__ == "__main__":
     test_summary = eval_model(val_step_fn, state, test_loader)
     test_loss = test_summary["loss"]
     test_mae = test_summary["mae"]
-    print("Testing  -             loss: %.2f, MAE: %.2f" % (test_loss, test_mae))
+    print("Testing  -            loss: %.2f, MAE: %.2f" % (test_loss, test_mae))
 
     workdir = config.checkpoint_dir
     os.makedirs(workdir, exist_ok=True)
-    save_checkpoint(state.optimizer, workdir, step=state.step)
+    save_checkpoint(state, workdir)
