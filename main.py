@@ -7,7 +7,7 @@ from jax.random import PRNGKey
 import torch
 import torch.multiprocessing as multiprocessing
 
-from jax_xtal.data import CutoffNN, AtomFeaturizer, BondFeaturizer, CrystalDataset, get_dataloaders
+from jax_xtal.data import AtomFeaturizer, BondFeaturizer, CrystalDataset, get_dataloaders
 from jax_xtal.model import CGCNN
 from jax_xtal.train_utils import (
     create_train_state,
@@ -35,7 +35,6 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
     rng = PRNGKey(seed)
 
-    neighbor_strategy = CutoffNN(cutoff=config.cutoff)
     root_dir = os.path.dirname(__file__)
     atom_featurizer = AtomFeaturizer(atom_features_json=config.atom_init_features_path)
     bond_featurizer = BondFeaturizer(
@@ -44,10 +43,10 @@ if __name__ == "__main__":
     dataset = CrystalDataset(
         atom_featurizer=atom_featurizer,
         bond_featurizer=bond_featurizer,
-        neighbor_strategy=neighbor_strategy,
         structures_dir=config.structures_dir,
         targets_csv_path=config.targets_csv_path,
         max_num_neighbors=config.max_num_neighbors,
+        cutoff=config.cutoff,
         seed=seed,
     )
     train_loader, val_loader, test_loader = get_dataloaders(

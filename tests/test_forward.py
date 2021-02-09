@@ -2,22 +2,21 @@ import os
 
 from jax.random import PRNGKey
 
-from jax_xtal.data import CutoffNN, AtomFeaturizer, BondFeaturizer, CrystalDataset, get_dataloaders
+from jax_xtal.data import AtomFeaturizer, BondFeaturizer, CrystalDataset, get_dataloaders
 from jax_xtal.model import CGCNN
 
 
 def test_cgcnn_forward():
-    neighbor_strategy = CutoffNN(cutoff=6.0)
     root_dir = os.path.join(os.path.dirname(__file__), "..")
     atom_featurizer = AtomFeaturizer(os.path.join(root_dir, "data", "atom_init.json"))
     bond_featurizer = BondFeaturizer(dmin=0.7, dmax=5.2, num_filters=10)
     dataset = CrystalDataset(
         atom_featurizer=atom_featurizer,
         bond_featurizer=bond_featurizer,
-        neighbor_strategy=neighbor_strategy,
         structures_dir=os.path.join(root_dir, "data", "structures_dummy"),
         targets_csv_path=os.path.join(root_dir, "data", "targets_dummy.csv"),
         max_num_neighbors=12,
+        cutoff=6.0,
     )
 
     rng = PRNGKey(0)

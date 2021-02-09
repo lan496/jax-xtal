@@ -9,7 +9,6 @@ from torch.utils.data import DataLoader
 import torch.multiprocessing as multiprocessing
 
 from jax_xtal.data import (
-    CutoffNN,
     AtomFeaturizer,
     BondFeaturizer,
     CrystalDataset,
@@ -52,7 +51,6 @@ if __name__ == "__main__":
     torch.manual_seed(seed)
     rng = PRNGKey(seed)
 
-    neighbor_strategy = CutoffNN()
     atom_featurizer = AtomFeaturizer(atom_features_json=config.atom_init_features_path)
     bond_featurizer = BondFeaturizer(
         dmin=config.dmin, dmax=config.dmax, num_filters=config.num_bond_features
@@ -60,9 +58,9 @@ if __name__ == "__main__":
     dataset = CrystalDataset(
         atom_featurizer=atom_featurizer,
         bond_featurizer=bond_featurizer,
-        neighbor_strategy=neighbor_strategy,
         structures_dir=args.structures_dir,
         max_num_neighbors=config.max_num_neighbors,
+        cutoff=config.cutoff,
         train=False,
         seed=seed,
     )

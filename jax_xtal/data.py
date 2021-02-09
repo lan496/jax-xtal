@@ -2,13 +2,12 @@ import json
 import os
 from functools import lru_cache
 from glob import glob
+from typing import List
 
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
-from pymatgen.core import Structure
-from pymatgen.analysis.local_env import NearNeighbors
-from pymatgen.analysis.graphs import StructureGraph
+from pymatgen.core import Structure, PeriodicSite
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 
 
@@ -81,7 +80,7 @@ class BondFeaturizer:
         # (max_num_neighbors, num_bond_features) is returned
         return np.exp(-(((distances[:, None] - self._filter[None, :]) / self._blur) ** 2))
 
-    def __call__(self, graph: StructureGraph, max_num_neighbors: int):
+    def __call__(self, all_neighbors: List[List[PeriodicSite]], max_num_neighbors: int):
         """
         Parameters
         ----------
@@ -97,15 +96,16 @@ class BondFeaturizer:
         """
         bond_features = []
         neighbor_indices = []
-        for i in range(graph.structure.num_sites):
+        # for i in range(graph.structure.num_sites):
+        for neighbors in all_neighbors:
             # graph.get_connected_sites returns sorted list by distance
-            neighbors = [(site.dist, site.index) for site in graph.get_connected_sites(i)]
-            if len(neighbors) < max_num_neighbors:
-                num_ghosts = max_num_neighbors - len(neighbors)
+            nn = [(site.nn_distance, site.index) for site in neighbors]
+            if len(nn) < max_num_neighbors:
+                num_ghosts = max_num_neighbors - len(nn)
                 # set some large distance
-                padded_neighbors = neighbors + [(2 * self._dmax, 0) for _ in range(num_ghosts)]
+                padded_neighbors = nn + [(2 * self._dmax, 0) for _ in range(num_ghosts)]
             else:
-                padded_neighbors = neighbors[:max_num_neighbors]
+                padded_neighbors = nn[:max_num_neighbors]
 
             bond_features.append(
                 self._expand_by_basis(np.array([pn[0] for pn in padded_neighbors]))
@@ -115,75 +115,6 @@ class BondFeaturizer:
         bond_features = np.array(bond_features)
         neighbor_indices = np.array(neighbor_indices)
         return bond_features, neighbor_indices
-
-
-class CutoffNN(NearNeighbors):
-    """
-    An extremely simple NN class only using cutoff radius
-
-    # TODO: procedure to create graph in official implementation differs from that in SI.Sec.I.A.
-    """
-
-    def __init__(self, cutoff: float = 6.0):
-        self._cutoff = cutoff
-
-    @property
-    def structures_allowed(self):
-        """
-        Boolean property: can this NearNeighbors class be used with Structure
-        objects?
-        """
-        return True
-
-    @property
-    def molecules_allowed(self):
-        """
-        Boolean property: can this NearNeighbors class be used with Molecule
-        objects?
-        """
-        return True
-
-    @property
-    def extend_structure_molecules(self):
-        """
-        Boolean property: Do Molecules need to be converted to Structures to use
-        this NearNeighbors class? Note: this property is not defined for classes
-        for which molecules_allowed == False.
-        """
-        return True
-
-    def get_nn_info(self, structure, n):
-        """
-        Get all near-neighbor sites as well as the associated image locations
-        and weights of the site with index n in structure.
-        Args:
-            structure (Structure): input structure.
-            n (integer): index of site for which to determine near-neighbor
-                sites.
-        Returns:
-            siw (list of tuples (Site, array, float)): tuples, each one
-                of which represents a coordinated site, its image location,
-                and its weight.
-        """
-        site = structure[n]
-
-        neighs_dists = structure.get_neighbors(site, self._cutoff)
-
-        nn_info = []
-        for nn in neighs_dists:
-            n_site = nn
-            dist = nn.nn_distance
-
-            nn_info.append(
-                {
-                    "site": n_site,
-                    "image": self._get_image(structure, n_site),
-                    "weight": dist,
-                    "site_index": self._get_original_site(structure, n_site),
-                }
-            )
-
-        return nn_info
 
 
 class CrystalDataset(Dataset):
@@ -198,6 +129,7 @@ class CrystalDataset(Dataset):
         inherite pymatgen's NearNeighbors class, which find neighbors of each atom with some criterion
     max_num_neighbors:
         maximum number of neighbors for each atom in cosideration
+    cutoff: cutoff radius for graph
     structures_dir:
         path for json files of pymatgen's structures
     targets_csv_path:
@@ -211,11 +143,11 @@ class CrystalDataset(Dataset):
         self,
         atom_featurizer: AtomFeaturizer,
         bond_featurizer: BondFeaturizer,
-        neighbor_strategy: NearNeighbors,
         structures_dir: str,
         targets_csv_path: str = "",
         train: bool = True,
         max_num_neighbors: int = 12,
+        cutoff: float = 6.0,
         seed=0,
     ):
         if not os.path.exists(structures_dir):
@@ -224,8 +156,8 @@ class CrystalDataset(Dataset):
 
         self._atom_featurizer = atom_featurizer
         self._bond_featurizer = bond_featurizer
-        self._neighbor_strategy = neighbor_strategy
         self._max_num_neighbors = max_num_neighbors
+        self._cutoff = cutoff
 
         self._train = train
         if self._train:
@@ -269,8 +201,8 @@ class CrystalDataset(Dataset):
         initial_atom_features = self._atom_featurizer(structure)
 
         # Padding neighbors might cause artificial effect, see https://github.com/txie-93/cgcnn/pull/16
-        graph = StructureGraph.with_local_env_strategy(structure, self._neighbor_strategy)
-        bond_features, neighbor_indices = self._bond_featurizer(graph, self._max_num_neighbors)
+        neighbors = structure.get_all_neighbors(r=self._cutoff)
+        bond_features, neighbor_indices = self._bond_featurizer(neighbors, self._max_num_neighbors)
 
         data = {
             "id": self._ids[idx],
