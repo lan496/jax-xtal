@@ -41,8 +41,8 @@ if __name__ == "__main__":
         atom_featurizer=atom_featurizer,
         bond_featurizer=bond_featurizer,
         neighbor_strategy=neighbor_strategy,
-        structures_dir=os.path.join(root_dir, "data", "structures_dummy"),
-        targets_csv_path=os.path.join(root_dir, "data", "targets_dummy.csv"),
+        structures_dir=config.structures_dir,
+        targets_csv_path=config.targets_csv_path,
         max_num_neighbors=config.max_num_neighbors,
         seed=seed,
     )
@@ -73,7 +73,8 @@ if __name__ == "__main__":
     )
 
     # MultiStepLR scheduelr for learning rate
-    steps_per_epoch = len(train_loader) // config.batch_size
+    train_size = int(len(dataset) * config.train_ratio)
+    steps_per_epoch = train_size // config.batch_size
     learning_rate_fn = partial(
         multi_step_lr,
         steps_per_epoch=steps_per_epoch,
@@ -91,6 +92,7 @@ if __name__ == "__main__":
     )
     val_step_fn = jax.jit(partial(eval_one_step, apply_fn=model.apply))
 
+    print("Start training")
     epoch_metrics = []
     for epoch in range(1, config.num_epochs + 1):
         state, train_summary = train_one_epoch(train_step_fn, state, train_loader, epoch)
@@ -107,6 +109,7 @@ if __name__ == "__main__":
     test_mae = test_summary["mae"]
     print("Testing  -            loss: %.2f, MAE: %.2f" % (test_loss, test_mae))
 
+    print("Save checkpoint")
     workdir = config.checkpoint_dir
     os.makedirs(workdir, exist_ok=True)
     save_checkpoint(state, workdir)

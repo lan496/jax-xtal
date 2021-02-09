@@ -43,8 +43,9 @@ ARG JAX_VERSION=0.2.9
 ARG JAXLIB_VERSION=0.1.59+cuda111
 RUN python -m pip install --upgrade jax==${JAX_VERSION} jaxlib==${JAXLIB_VERSION} -f https://storage.googleapis.com/jax-releases/jax_releases.html
 
-# install jupyter
-RUN python -m pip install notebook
+# install torch, pymatgen, and others
+RUN python -m pip install torch==1.7.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+RUN python -m pip install pymatgen==2020.12.31 flax numpy dataclasses-json tqdm
 
 RUN mkdir /workspace
 ENTRYPOINT ["/bin/bash"]

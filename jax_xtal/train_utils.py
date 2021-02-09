@@ -6,6 +6,7 @@ import jax.numpy as jnp
 import flax
 from flax import optim
 from flax import serialization
+from tqdm import tqdm
 
 from jax_xtal.model import CGCNN
 from jax_xtal.data import get_dataloaders
@@ -127,7 +128,7 @@ def predict_one_step(apply_fn, batch, state: TrainState):
 
 def train_one_epoch(train_step_fn, state: TrainState, train_loader, epoch):
     train_metrics = []
-    for batch in train_loader:
+    for batch in tqdm(train_loader):
         batch.pop("id")  # pop unused entry
         state, metrics = train_step_fn(batch=batch, state=state)
         train_metrics.append(metrics)
