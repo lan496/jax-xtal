@@ -6,6 +6,7 @@ import jax
 from jax.random import PRNGKey
 import torch
 from torch.utils.data import DataLoader
+import torch.multiprocessing as multiprocessing
 
 from jax_xtal.data import (
     CutoffNN,
@@ -26,6 +27,8 @@ from jax_xtal.config import load_config
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("spawn")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True, type=str, help="pre-trained parameters")
     parser.add_argument("--config", required=True, type=str, help="json config used for training")

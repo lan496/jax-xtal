@@ -5,6 +5,7 @@ import argparse
 import jax
 from jax.random import PRNGKey
 import torch
+import torch.multiprocessing as multiprocessing
 
 from jax_xtal.data import CutoffNN, AtomFeaturizer, BondFeaturizer, CrystalDataset, get_dataloaders
 from jax_xtal.model import CGCNN
@@ -21,6 +22,9 @@ from jax_xtal.config import load_config
 
 
 if __name__ == "__main__":
+    # see https://github.com/google/jax/issues/3382
+    multiprocessing.set_start_method("spawn")
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, type=str, help="path for json config")
     args = parser.parse_args()

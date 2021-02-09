@@ -3,6 +3,7 @@ import os
 from functools import lru_cache
 from glob import glob
 
+import jax.numpy as jnp
 import numpy as np
 import pandas as pd
 from pymatgen.core import Structure
@@ -352,7 +353,6 @@ def collate_pool(samples, train=True):
         - "target": (batch_size, 1)
         where N is the total number of atoms in the samples
     """
-    batch_ids = []
     batch_neighbor_indices = []
     batch_atom_features = []
     batch_bond_features = []
@@ -361,7 +361,6 @@ def collate_pool(samples, train=True):
 
     index_offset = 0
     for data in samples:
-        batch_ids.append(data["id"])
         batch_atom_features.append(data["atom_features"])
         batch_bond_features.append(data["bond_features"])
         batch_neighbor_indices.append(data["neighbor_indices"] + index_offset)
@@ -369,18 +368,17 @@ def collate_pool(samples, train=True):
             batch_targets.append(data["target"])
 
         num_atoms_i = data["atom_features"].shape[0]
-        atom_indices.append(np.arange(num_atoms_i) + index_offset)
+        atom_indices.append(jnp.arange(num_atoms_i) + index_offset)
 
         index_offset += num_atoms_i
 
     batch_data = {
-        "id": np.array(batch_ids),
-        "neighbor_indices": np.concatenate(batch_neighbor_indices, axis=0),
-        "atom_features": np.concatenate(batch_atom_features, axis=0),
-        "bond_features": np.concatenate(batch_bond_features, axis=0),
+        "neighbor_indices": jnp.concatenate(batch_neighbor_indices, axis=0),
+        "atom_features": jnp.concatenate(batch_atom_features, axis=0),
+        "bond_features": jnp.concatenate(batch_bond_features, axis=0),
         "atom_indices": atom_indices,
     }
     if train:
-        batch_data["target"] = np.array(batch_targets)[:, None]
+        batch_data["target"] = jnp.array(batch_targets)[:, None]
 
     return batch_data

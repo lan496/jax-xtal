@@ -129,7 +129,6 @@ def predict_one_step(apply_fn, batch, state: TrainState):
 def train_one_epoch(train_step_fn, state: TrainState, train_loader, epoch):
     train_metrics = []
     for batch in tqdm(train_loader):
-        batch.pop("id")  # pop unused entry
         state, metrics = train_step_fn(batch=batch, state=state)
         train_metrics.append(metrics)
     train_metrics = jax.device_get(train_metrics)
@@ -141,7 +140,6 @@ def train_one_epoch(train_step_fn, state: TrainState, train_loader, epoch):
 def eval_model(val_step_fn, state: TrainState, val_loader):
     eval_metrics = []
     for batch in val_loader:
-        batch.pop("id")  # pop unused entry
         metrics = val_step_fn(batch=batch, state=state)
         eval_metrics.append(metrics)
     eval_metrics = jax.device_get(eval_metrics)
@@ -152,7 +150,6 @@ def eval_model(val_step_fn, state: TrainState, val_loader):
 def predict_dataset(test_step_fn, state: TrainState, dataloader):
     test_predictions = []
     for batch in dataloader:
-        batch.pop("id")  # pop unused entry
         predictions = test_step_fn(batch=batch, state=state)
         test_predictions.append(predictions)
     predictions = jnp.concatenate(test_predictions)  # (len(dataloader), 1)
