@@ -28,13 +28,18 @@ class CGConv(nn.Module):
         atom_neighbor_features = atom_features[neighbor_indices, :]
         total_neighbor_features = jnp.concatenate(
             [
-                jnp.tile(atom_features[:, None, :], (1, max_num_neighbors, 1)),
+                jnp.broadcast_to(
+                    atom_features[:, None, :],
+                    (num_atoms_batch, max_num_neighbors, num_atom_features),
+                ),
                 atom_neighbor_features,
                 bond_features,
             ],
             axis=2,
         )
-        total_gated_features = Dense(2 * num_atom_features)(total_neighbor_features)
+        total_gated_features = Dense(2 * num_atom_features, name="cgweight")(
+            total_neighbor_features
+        )
         total_gated_features = norm(name="bn_1")(
             total_gated_features.reshape(-1, 2 * num_atom_features)
         ).reshape(
@@ -93,11 +98,11 @@ class CGCNN(nn.Module):
     ):
         atom_features = nn.Dense(self.num_atom_features, name="embedding")(atom_features)
         for i in range(self.num_convs):
-            atom_features = CGConv(name=f"conv_{i}")(
+            atom_features = CGConv(name=f"cgconv_{i}")(
                 neighbor_indices, atom_features, bond_features, train
             )
 
-        crystal_features = CGPooling()(atom_features, atom_indices)
+        crystal_features = CGPooling(name="cgpooling")(atom_features, atom_indices)
         crystal_features = softplus(crystal_features)
         for i in range(self.num_hidden_layers):
             crystal_features = nn.Dense(self.num_hidden_features, name=f"fc_{i}")(crystal_features)

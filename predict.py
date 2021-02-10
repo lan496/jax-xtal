@@ -75,7 +75,7 @@ if __name__ == "__main__":
     # load checkpoint
     model = CGCNN(
         num_atom_features=config.num_atom_features,
-        num_convs=config.num_atom_features,
+        num_convs=config.num_convs,
         num_hidden_layers=config.num_hidden_layers,
         num_hidden_features=config.num_hidden_features,
     )

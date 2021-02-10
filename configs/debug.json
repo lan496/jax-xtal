@@ -4,7 +4,7 @@
     "num_atom_features": 2,
     "num_convs": 1,
     "num_hidden_features": 2,
-    "num_epochs": 1,
+    "num_epochs": 30,
     "num_workers": 0,
     "batch_size": 2
 }
