@@ -66,10 +66,10 @@ def train_one_step(apply_fn, batch, state: TrainState, learning_rate_fn, l2_reg)
         variables = {"params": params, **state.model_state}
         predictions, new_model_state = apply_fn(
             variables,
-            batch["neighbor_indices"],
-            batch["atom_features"],
-            batch["bond_features"],
-            batch["atom_indices"],
+            jax.device_put(batch["neighbor_indices"]),
+            jax.device_put(batch["atom_features"]),
+            jax.device_put(batch["bond_features"]),
+            jax.device_put(batch["atom_indices"]),
             mutable=["batch_stats"],  # for BatchNorm
         )
 

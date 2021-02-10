@@ -1,6 +1,5 @@
 import json
 import os
-from functools import lru_cache
 from glob import glob
 from typing import List
 
@@ -43,7 +42,7 @@ class AtomFeaturizer:
         -------
         atom_features: (structure.num_sites, self.num_atom_features)
         """
-        atom_features = np.array([self._get_atom_feature(site.specie.Z) for site in structure])
+        atom_features = jnp.array([self._get_atom_feature(site.specie.Z) for site in structure])
         return atom_features
 
 
@@ -65,7 +64,7 @@ class BondFeaturizer:
         self._dmin = dmin
         self._dmax = dmax
         self._num_filters = num_filters
-        self._filter = np.linspace(dmin, dmax, num_filters, endpoint=True)
+        self._filter = jnp.linspace(dmin, dmax, num_filters, endpoint=True)
 
         if blur is None:
             self._blur = (dmax - dmin) / num_filters
@@ -78,7 +77,7 @@ class BondFeaturizer:
 
     def _expand_by_basis(self, distances):
         # (max_num_neighbors, num_bond_features) is returned
-        return np.exp(-(((distances[:, None] - self._filter[None, :]) / self._blur) ** 2))
+        return jnp.exp(-(((distances[:, None] - self._filter[None, :]) / self._blur) ** 2))
 
     def __call__(self, all_neighbors: List[List[PeriodicSite]], max_num_neighbors: int):
         """
@@ -108,12 +107,12 @@ class BondFeaturizer:
                 padded_neighbors = nn[:max_num_neighbors]
 
             bond_features.append(
-                self._expand_by_basis(np.array([pn[0] for pn in padded_neighbors]))
+                self._expand_by_basis(jnp.array([pn[0] for pn in padded_neighbors]))
             )
             neighbor_indices.append([pn[1] for pn in padded_neighbors])
 
-        bond_features = np.array(bond_features)
-        neighbor_indices = np.array(neighbor_indices)
+        bond_features = jnp.array(bond_features)
+        neighbor_indices = jnp.array(neighbor_indices)
         return bond_features, neighbor_indices
 
 
@@ -190,7 +189,6 @@ class CrystalDataset(Dataset):
     def get_id_list(self):
         return self._ids
 
-    @lru_cache()
     def __getitem__(self, idx):
         # load structure
         structure_json_basename = self._ids[idx] + ".json"
@@ -206,14 +204,16 @@ class CrystalDataset(Dataset):
 
         data = {
             "id": self._ids[idx],
-            "neighbor_indices": neighbor_indices,  # (num_atoms, max_num_neighbors)
-            "atom_features": initial_atom_features,  # (num_atoms, num_atom_features)
-            "bond_features": bond_features,  # (num_atoms, max_num_neighbors, num_bond_features)
+            "neighbor_indices": jnp.asarray(neighbor_indices),  # (num_atoms, max_num_neighbors)
+            "atom_features": jnp.asarray(initial_atom_features),  # (num_atoms, num_atom_features)
+            "bond_features": jnp.asarray(
+                bond_features
+            ),  # (num_atoms, max_num_neighbors, num_bond_features)
         }
 
         if self._train:
             target = self._targets.iloc[idx]["target"]
-            data["target"] = target
+            data["target"] = jnp.asarray(target)
 
         return data
 
