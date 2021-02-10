@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 from pymatgen.core import Structure, PeriodicSite
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
+from tqdm import tqdm
 
 
 class AtomFeaturizer:
@@ -42,7 +43,7 @@ class AtomFeaturizer:
         -------
         atom_features: (structure.num_sites, self.num_atom_features)
         """
-        atom_features = jnp.array([self._get_atom_feature(site.specie.Z) for site in structure])
+        atom_features = np.array([self._get_atom_feature(site.specie.Z) for site in structure])
         return atom_features
 
 
@@ -64,7 +65,7 @@ class BondFeaturizer:
         self._dmin = dmin
         self._dmax = dmax
         self._num_filters = num_filters
-        self._filter = jnp.linspace(dmin, dmax, num_filters, endpoint=True)
+        self._filter = np.linspace(dmin, dmax, num_filters, endpoint=True)
 
         if blur is None:
             self._blur = (dmax - dmin) / num_filters
@@ -77,7 +78,7 @@ class BondFeaturizer:
 
     def _expand_by_basis(self, distances):
         # (max_num_neighbors, num_bond_features) is returned
-        return jnp.exp(-(((distances[:, None] - self._filter[None, :]) / self._blur) ** 2))
+        return np.exp(-(((distances[:, None] - self._filter[None, :]) / self._blur) ** 2))
 
     def __call__(self, all_neighbors: List[List[PeriodicSite]], max_num_neighbors: int):
         """
@@ -107,12 +108,12 @@ class BondFeaturizer:
                 padded_neighbors = nn[:max_num_neighbors]
 
             bond_features.append(
-                self._expand_by_basis(jnp.array([pn[0] for pn in padded_neighbors]))
+                self._expand_by_basis(np.array([pn[0] for pn in padded_neighbors]))
             )
             neighbor_indices.append([pn[1] for pn in padded_neighbors])
 
-        bond_features = jnp.array(bond_features)
-        neighbor_indices = jnp.array(neighbor_indices)
+        bond_features = np.array(bond_features)
+        neighbor_indices = np.array(neighbor_indices)
         return bond_features, neighbor_indices
 
 
@@ -151,6 +152,7 @@ class CrystalDataset(Dataset):
     ):
         if not os.path.exists(structures_dir):
             raise FileNotFoundError(f"structures_dir does not exist: {structures_dir}")
+
         self._structures_dir = structures_dir
 
         self._atom_featurizer = atom_featurizer
@@ -165,11 +167,13 @@ class CrystalDataset(Dataset):
             self._targets_csv_path = targets_csv_path
 
             # load targets and shuffle indices
-            _targets = pd.read_csv(
+            self._targets = pd.read_csv(
                 self._targets_csv_path, sep=",", header=None, names=["id", "target"]
             )
             rng_np = np.random.default_rng(seed)
-            self._targets = _targets.iloc[rng_np.permutation(len(_targets))].reset_index(drop=True)
+            self._targets = self._targets.iloc[rng_np.permutation(len(self._targets))].reset_index(
+                drop=True
+            )
             self._ids = self._targets["id"].tolist()
         else:
             self._ids = list(
@@ -178,6 +182,20 @@ class CrystalDataset(Dataset):
                     for path in glob(os.path.join(structures_dir, "*.json"))
                 ]
             )
+
+        # precompute datate
+        print("Preprocessing dataset")
+        self._inputs = [
+            _create_inputs(
+                self._ids[idx],
+                self._structures_dir,
+                self._atom_featurizer,
+                self._bond_featurizer,
+                self._max_num_neighbors,
+                self._cutoff,
+            )
+            for idx in tqdm(range(len(self._ids)))
+        ]
 
     def __len__(self):
         return len(self._ids)
@@ -190,32 +208,36 @@ class CrystalDataset(Dataset):
         return self._ids
 
     def __getitem__(self, idx):
-        # load structure
-        structure_json_basename = self._ids[idx] + ".json"
-        structure_json_path = os.path.join(self._structures_dir, structure_json_basename)
-        with open(structure_json_path, "r") as f:
-            structure = Structure.from_dict(json.load(f))
-
-        initial_atom_features = self._atom_featurizer(structure)
-
-        # Padding neighbors might cause artificial effect, see https://github.com/txie-93/cgcnn/pull/16
-        neighbors = structure.get_all_neighbors(r=self._cutoff)
-        bond_features, neighbor_indices = self._bond_featurizer(neighbors, self._max_num_neighbors)
-
-        data = {
-            "id": self._ids[idx],
-            "neighbor_indices": jnp.asarray(neighbor_indices),  # (num_atoms, max_num_neighbors)
-            "atom_features": jnp.asarray(initial_atom_features),  # (num_atoms, num_atom_features)
-            "bond_features": jnp.asarray(
-                bond_features
-            ),  # (num_atoms, max_num_neighbors, num_bond_features)
-        }
-
+        data = self._inputs[idx]
         if self._train:
             target = self._targets.iloc[idx]["target"]
-            data["target"] = jnp.asarray(target)
+            data["target"] = target
 
         return data
+
+
+def _create_inputs(
+    basename, structures_dir, atom_featurizer, bond_featurizer, max_num_neighbors, cutoff
+):
+    # load structure
+    structure_json_basename = basename + ".json"
+    structure_json_path = os.path.join(structures_dir, structure_json_basename)
+    with open(structure_json_path, "r") as f:
+        structure = Structure.from_dict(json.load(f))
+
+    initial_atom_features = atom_featurizer(structure)
+
+    # Padding neighbors might cause artificial effect, see https://github.com/txie-93/cgcnn/pull/16
+    neighbors = structure.get_all_neighbors(r=cutoff)
+    bond_features, neighbor_indices = bond_featurizer(neighbors, max_num_neighbors)
+
+    inputs = {
+        "neighbor_indices": neighbor_indices,  # (num_atoms, max_num_neighbors)
+        "atom_features": initial_atom_features,  # (num_atoms, num_atom_features)
+        "bond_features": bond_features,  # (num_atoms, max_num_neighbors, num_bond_features)
+    }
+
+    return inputs
 
 
 def get_dataloaders(
