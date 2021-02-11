@@ -45,7 +45,8 @@ RUN python -m pip install --upgrade jax==${JAX_VERSION} jaxlib==${JAXLIB_VERSION
 
 # install torch, pymatgen, and others
 RUN python -m pip install torch==1.7.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
-RUN python -m pip install pymatgen==2020.12.31 flax numpy dataclasses-json tqdm
+RUN python -m pip install pymatgen==2020.12.31
+RUN python -m pip install flax numpy dataclasses-json tqdm joblib
 
 RUN mkdir /workspace
 ENTRYPOINT ["/bin/bash"]

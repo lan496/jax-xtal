@@ -36,7 +36,7 @@ class AtomFeaturizer:
 
     def __call__(self, structure: Structure):
         """
-        Paraeters
+        Parameters
         ---------
         structure: structure to be calculated atomic features
 
@@ -125,9 +125,9 @@ class CrystalDataset(Dataset):
     atom_featurizer:
         convert atom into one-hot vector
     bond_featurizer:
-        convert bond infromation into one-hot vector
+        convert bond infomation into one-hot vector
     neighbor_strategy:
-        inherite pymatgen's NearNeighbors class, which find neighbors of each atom with some criterion
+        inherit pymatgen's NearNeighbors class, which find neighbors of each atom with some criterion
     max_num_neighbors:
         maximum number of neighbors for each atom in cosideration
     cutoff: cutoff radius for graph
@@ -187,7 +187,7 @@ class CrystalDataset(Dataset):
 
         # precompute datate
         print("Preprocessing dataset")
-        self._ids = Parallel(n_jobs, verbose=1)(
+        self._inputs = Parallel(n_jobs, verbose=1)(
             delayed(_create_inputs)(
                 self._ids[idx],
                 self._structures_dir,
@@ -198,19 +198,6 @@ class CrystalDataset(Dataset):
             )
             for idx in range(len(self._ids))
         )
-        """
-        self._inputs = [
-            _create_inputs(
-                self._ids[idx],
-                self._structures_dir,
-                self._atom_featurizer,
-                self._bond_featurizer,
-                self._max_num_neighbors,
-                self._cutoff,
-            )
-            for idx in tqdm(range(len(self._ids)))
-        ]
-        """
 
     def __len__(self):
         return len(self._ids)
