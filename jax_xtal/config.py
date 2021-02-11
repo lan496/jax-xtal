@@ -43,6 +43,7 @@ class Config:
     pin_memory: bool = False
     checkpoint_dir: str = "checkpoints"
     seed: int = 0
+    n_jobs: int = 1  # workers for preprocessing
 
 
 def load_config(path: str) -> Config:

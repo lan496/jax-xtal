@@ -4,6 +4,7 @@ from glob import glob
 from typing import List
 
 import jax.numpy as jnp
+from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 from pymatgen.core import Structure, PeriodicSite
@@ -149,6 +150,7 @@ class CrystalDataset(Dataset):
         max_num_neighbors: int = 12,
         cutoff: float = 6.0,
         seed=0,
+        n_jobs=1,
     ):
         if not os.path.exists(structures_dir):
             raise FileNotFoundError(f"structures_dir does not exist: {structures_dir}")
@@ -185,6 +187,18 @@ class CrystalDataset(Dataset):
 
         # precompute datate
         print("Preprocessing dataset")
+        self._ids = Parallel(n_jobs, verbose=1)(
+            delayed(_create_inputs)(
+                self._ids[idx],
+                self._structures_dir,
+                self._atom_featurizer,
+                self._bond_featurizer,
+                self._max_num_neighbors,
+                self._cutoff,
+            )
+            for idx in range(len(self._ids))
+        )
+        """
         self._inputs = [
             _create_inputs(
                 self._ids[idx],
@@ -196,6 +210,7 @@ class CrystalDataset(Dataset):
             )
             for idx in tqdm(range(len(self._ids)))
         ]
+        """
 
     def __len__(self):
         return len(self._ids)
@@ -214,6 +229,10 @@ class CrystalDataset(Dataset):
             data["target"] = target
 
         return data
+
+
+def _create_inputs_wrapper(args):
+    return _create_inputs(*args)
 
 
 def _create_inputs(

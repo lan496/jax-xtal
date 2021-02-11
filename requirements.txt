@@ -6,3 +6,4 @@ torch==1.7.1+cpu
 pymatgen==2020.12.31
 dataclasses-json
 tqdm
+joblib

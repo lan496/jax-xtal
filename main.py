@@ -48,6 +48,7 @@ if __name__ == "__main__":
         max_num_neighbors=config.max_num_neighbors,
         cutoff=config.cutoff,
         seed=seed,
+        n_jobs=config.n_jobs,
     )
     train_loader, val_loader, test_loader = get_dataloaders(
         dataset,
