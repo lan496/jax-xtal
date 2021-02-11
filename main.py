@@ -19,6 +19,7 @@ from jax_xtal.train_utils import (
     eval_model,
     multi_step_lr,
     save_checkpoint,
+    Normalizer,
 )
 from jax_xtal.config import load_config
 
@@ -56,6 +57,15 @@ if __name__ == "__main__":
         test_ratio=config.test_ratio,
     )
 
+    # normalize target value
+    num_norm_samples = min(500, len(train_dataset))
+    normalizer = Normalizer.from_targets(
+        [train_dataset[idx]["target"] for idx in range(num_norm_samples)]
+    )
+    train_dataset = normalizer.normalize_dataset(train_dataset)
+    val_dataset = normalizer.normalize_dataset(val_dataset)
+    test_dataset = normalizer.normalize_dataset(test_dataset)
+
     # initialize model
     model = CGCNN(
         num_atom_features=config.num_atom_features,
@@ -71,6 +81,7 @@ if __name__ == "__main__":
         num_initial_atom_features=atom_featurizer.num_initial_atom_features,
         num_bond_features=config.num_bond_features,
         learning_rate=config.learning_rate,
+        normalizer=normalizer,
     )
 
     # MultiStepLR scheduelr for learning rate
@@ -102,17 +113,19 @@ if __name__ == "__main__":
             train_step_fn, state, train_dataset, batch_size, epoch, rng_train, config.print_freq
         )
         train_loss = train_summary["loss"]
-        train_mae = train_summary["mae"]
-        print("Training - epoch: %2d, loss: %.2f, MAE: %.2f" % (epoch, train_loss, train_mae))
+        train_mae = normalizer.denormalize(train_summary["mae"])
+        print(
+            "Training - epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, train_loss, train_mae)
+        )
         val_summary = eval_model(val_step_fn, state, val_dataset)
         val_loss = val_summary["loss"]
-        val_mae = val_summary["mae"]
-        print("Testing  - epoch: %2d, loss: %.2f, MAE: %.2f" % (epoch, val_loss, val_mae))
+        val_mae = normalizer.denormalize(val_summary["mae"])
+        print("Testing  - epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, val_loss, val_mae))
 
     test_summary = eval_model(val_step_fn, state, test_dataset)
     test_loss = test_summary["loss"]
-    test_mae = test_summary["mae"]
-    print("Testing  -            loss: %.2f, MAE: %.2f" % (test_loss, test_mae))
+    test_mae = normalizer.denormalize(test_summary["mae"])
+    print("Testing  -            loss: %.2f, MAE: %.2f eV/atom" % (test_loss, test_mae))
 
     print("Save checkpoint")
     workdir = config.checkpoint_dir

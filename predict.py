@@ -16,6 +16,7 @@ from jax_xtal.train_utils import (
     predict_one_step,
     predict_dataset,
     restore_checkpoint,
+    Normalizer,
 )
 from jax_xtal.config import load_config
 
@@ -32,10 +33,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     config = load_config(args.config)
-
-    batch_size = 2
-    num_workers = 1
-    pin_memory = False
 
     root_dir = os.path.dirname(__file__)
     atom_init_features_path = os.path.join(root_dir, "data", "atom_init.json")
@@ -75,12 +72,18 @@ if __name__ == "__main__":
         num_initial_atom_features=atom_featurizer.num_initial_atom_features,
         num_bond_features=config.num_bond_features,
         learning_rate=config.learning_rate,
+        normalizer=Normalizer(0, 0),  # dummy normalizer instance
     )
     state = restore_checkpoint(args.checkpoint, state)
 
     # prediction
     pred_step_fn = jax.jit(partial(predict_one_step, apply_fn=model.apply))
     predictions = predict_dataset(pred_step_fn, state, dataset)
+
+    # denormalize predictions
+    normalizer = Normalizer(state.sample_mean, state.sample_std)
+    denormed_preds = normalizer.denormalize(predictions)
+
     with open(args.output, "w") as f:
         for i, idx in enumerate(list_ids):
-            f.write(f"{idx}, {predictions[i][0]}\n")
+            f.write(f"{idx}, {denormed_preds[i][0]}\n")

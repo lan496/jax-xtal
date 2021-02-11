@@ -2,6 +2,7 @@ import os
 from typing import Any
 from time import time
 
+import numpy as np
 import jax
 import jax.numpy as jnp
 import flax
@@ -17,6 +18,43 @@ class TrainState:
     step: int
     optimizer: optim.Optimizer
     model_state: Any
+    sample_mean: float
+    sample_std: float
+
+
+class Normalizer:
+    """
+    normalize target value
+    """
+
+    def __init__(self, mean, std):
+        self._mean = mean
+        self._std = std
+
+    @property
+    def mean(self):
+        return self._mean
+
+    @property
+    def std(self):
+        return self._std
+
+    def normalize(self, target):
+        return (target - self._mean) / self._std
+
+    def normalize_dataset(self, dataset):
+        for idx in range(len(dataset)):
+            dataset[idx]["target"] = self.normalize(dataset[idx]["target"])
+        return dataset
+
+    def denormalize(self, normed):
+        return self._std * normed + self._mean
+
+    @classmethod
+    def from_targets(cls, targets):
+        mean = np.mean(targets)
+        std = np.std(targets)
+        return cls(mean, std)
 
 
 def create_optimizer(params, learning_rate) -> optim.Optimizer:
@@ -148,7 +186,7 @@ def train_one_epoch(
         lap = time()
         if i % print_freq == 0:
             print(
-                f"Epoch: [{epoch}][{i + 1}/{steps_per_epoch}]    Loss {metrics['loss']:.4f}    MAE {metrics['mae']:.4f}    Time {time_step:.2f} sec/step"
+                f"Epoch: [{epoch}][{i + 1}/{steps_per_epoch}]    Loss {metrics['loss']:.4f}    Time {time_step:.2f} sec/step"
             )
 
     train_metrics = jax.device_get(train_metrics)
@@ -186,7 +224,13 @@ def initialize_model(key, model, max_num_neighbors, num_initial_atom_features, n
 
 
 def create_train_state(
-    rng, model, max_num_neighbors, num_initial_atom_features, num_bond_features, learning_rate
+    rng,
+    model,
+    max_num_neighbors,
+    num_initial_atom_features,
+    num_bond_features,
+    learning_rate,
+    normalizer: Normalizer,
 ) -> TrainState:
     rng, rng_model = jax.random.split(rng)
     params, model_state = initialize_model(
@@ -197,7 +241,13 @@ def create_train_state(
         num_bond_features=num_bond_features,
     )
     optimizer = create_optimizer(params, learning_rate=learning_rate)
-    state = TrainState(step=0, optimizer=optimizer, model_state=model_state)
+    state = TrainState(
+        step=0,
+        optimizer=optimizer,
+        model_state=model_state,
+        sample_mean=normalizer.mean,
+        sample_std=normalizer.std,
+    )
     return state
 
 
