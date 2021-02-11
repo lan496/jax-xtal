@@ -19,7 +19,7 @@ class CGConv(nn.Module):
         atom_features: (N, num_atom_features)
         bond_features: (N, max_num_neighbors, num_bond_features)
         """
-        norm = partial(BatchNorm, use_running_average=not train, scale=False, bias=False,)
+        norm = partial(BatchNorm, use_running_average=not train, use_scale=False, use_bias=False,)
 
         num_atoms_batch, max_num_neighbors = neighbor_indices.shape
         num_atom_features = atom_features.shape[1]
