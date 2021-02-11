@@ -99,7 +99,7 @@ if __name__ == "__main__":
     for epoch in range(1, config.num_epochs + 1):
         rng, rng_train = jax.random.split(rng)
         state, train_summary = train_one_epoch(
-            train_step_fn, state, train_dataset, batch_size, epoch, rng_train
+            train_step_fn, state, train_dataset, batch_size, epoch, rng_train, config.print_freq
         )
         train_loss = train_summary["loss"]
         train_mae = train_summary["mae"]

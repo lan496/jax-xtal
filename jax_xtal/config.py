@@ -39,6 +39,7 @@ class Config:
     num_bond_features: int = 10
     max_num_neighbors: int = 12
     # misc
+    print_freq: int = 10
     num_workers: int = 1
     pin_memory: bool = False
     checkpoint_dir: str = "checkpoints"

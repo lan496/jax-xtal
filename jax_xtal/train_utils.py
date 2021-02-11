@@ -126,7 +126,9 @@ def predict_one_step(apply_fn, batch, state: TrainState):
     return predictions
 
 
-def train_one_epoch(train_step_fn, state: TrainState, train_dataset, batch_size, epoch, rng):
+def train_one_epoch(
+    train_step_fn, state: TrainState, train_dataset, batch_size, epoch, rng, print_freq=10
+):
     # shuffle training data
     train_size = len(train_dataset)
     steps_per_epoch = train_size // batch_size
@@ -135,11 +137,17 @@ def train_one_epoch(train_step_fn, state: TrainState, train_dataset, batch_size,
     perms = perms.reshape((steps_per_epoch, batch_size))
 
     train_metrics = []
-    for perm in tqdm(perms):
+    for i, perm in tqdm(enumerate(perms)):
         batch = collate_pool([train_dataset[idx] for idx in perm])
 
         state, metrics = train_step_fn(batch=batch, state=state)
         train_metrics.append(metrics)
+
+        if i % print_freq == 0:
+            print(
+                f"Epoch: [{epoch}][{i + 1}/{train_size}]    Loss {metrics['loss']:.4f}    MAE {metrics['mae']:.4f}"
+            )
+
     train_metrics = jax.device_get(train_metrics)
     train_summary = jax.tree_map(lambda x: x.mean(), train_metrics)[0]
     # TODO: add learning_rate to train_summary
