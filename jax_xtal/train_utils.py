@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import flax
 from flax import optim
 from flax import serialization
+from tqdm import tqdm
 
 from jax_xtal.model import CGCNN
 from jax_xtal.data import collate_pool
@@ -198,16 +199,26 @@ def train_one_epoch(
     return state, train_summary
 
 
-def eval_model(val_step_fn, state: TrainState, val_dataset):
-    batch = collate_pool(val_dataset)
-    eval_summary = val_step_fn(batch=batch, state=state)
-    eval_summary = jax.device_get(eval_summary)
+def eval_model(val_step_fn, state: TrainState, val_dataset, batch_size):
+    eval_metrics = []
+    steps_per_epoch = (len(val_dataset) + batch_size - 1) // batch_size
+    for i in tqdm(range(steps_per_epoch)):
+        batch = collate_pool(val_dataset[i * batch_size : (i + 1) * batch_size])
+        metrics = val_step_fn(batch=batch, state=state)
+        eval_metrics.append(metrics)
+    eval_summary = jax.device_get(eval_metrics)
+    eval_summary = jax.tree_map(lambda x: x.mean(), eval_summary)[0]
     return eval_summary
 
 
-def predict_dataset(test_step_fn, state: TrainState, dataset):
-    batch = collate_pool(dataset)
-    predictions = test_step_fn(batch=batch, state=state)  # (len(dataset), 1)
+def predict_dataset(test_step_fn, state: TrainState, dataset, batch_size):
+    steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
+    predictions = []
+    for i in tqdm(range(steps_per_epoch)):
+        batch = collate_pool(dataset)
+        preds = test_step_fn(batch=batch, state=state)
+        predictions.append(preds)
+    predictions = jnp.concatenate(predictions)  # (len(dataset), 1)
     return predictions
 
 

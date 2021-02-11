@@ -78,7 +78,7 @@ if __name__ == "__main__":
 
     # prediction
     pred_step_fn = jax.jit(partial(predict_one_step, apply_fn=model.apply))
-    predictions = predict_dataset(pred_step_fn, state, dataset)
+    predictions = predict_dataset(pred_step_fn, state, dataset, config.batch_size)
 
     # denormalize predictions
     normalizer = Normalizer(state.sample_mean, state.sample_std)

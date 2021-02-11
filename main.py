@@ -117,12 +117,12 @@ if __name__ == "__main__":
         print(
             "Training - epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, train_loss, train_mae)
         )
-        val_summary = eval_model(val_step_fn, state, val_dataset)
+        val_summary = eval_model(val_step_fn, state, val_dataset, batch_size)
         val_loss = val_summary["loss"]
         val_mae = normalizer.denormalize_MAE(val_summary["mae"])
         print("Testing  - epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, val_loss, val_mae))
 
-    test_summary = eval_model(val_step_fn, state, test_dataset)
+    test_summary = eval_model(val_step_fn, state, test_dataset, batch_size)
     test_loss = test_summary["loss"]
     test_mae = normalizer.denormalize_MAE(test_summary["mae"])
     print("Testing  -            loss: %.2f, MAE: %.2f eV/atom" % (test_loss, test_mae))
