@@ -1,12 +1,12 @@
 import os
 from typing import Any
+from time import time
 
 import jax
 import jax.numpy as jnp
 import flax
 from flax import optim
 from flax import serialization
-from tqdm import tqdm
 
 from jax_xtal.model import CGCNN
 from jax_xtal.data import collate_pool
@@ -66,10 +66,10 @@ def train_one_step(apply_fn, batch, state: TrainState, learning_rate_fn, l2_reg)
         variables = {"params": params, **state.model_state}
         predictions, new_model_state = apply_fn(
             variables,
-            jax.device_put(batch["neighbor_indices"]),
-            jax.device_put(batch["atom_features"]),
-            jax.device_put(batch["bond_features"]),
-            jax.device_put(batch["atom_indices"]),
+            batch["neighbor_indices"],
+            batch["atom_features"],
+            batch["bond_features"],
+            batch["atom_indices"],
             mutable=["batch_stats"],  # for BatchNorm
         )
 
@@ -137,15 +137,18 @@ def train_one_epoch(
     perms = perms.reshape((steps_per_epoch, batch_size))
 
     train_metrics = []
-    for i, perm in tqdm(enumerate(perms)):
+    lap = time()
+    for i, perm in enumerate(perms):
         batch = collate_pool([train_dataset[idx] for idx in perm])
 
         state, metrics = train_step_fn(batch=batch, state=state)
         train_metrics.append(metrics)
 
+        time_step = time() - lap
+        lap = time()
         if i % print_freq == 0:
             print(
-                f"Epoch: [{epoch}][{i + 1}/{train_size}]    Loss {metrics['loss']:.4f}    MAE {metrics['mae']:.4f}"
+                f"Epoch: [{epoch}][{i + 1}/{steps_per_epoch}]    Loss {metrics['loss']:.4f}    MAE {metrics['mae']:.4f}    Time {time_step:.2f} sec/step"
             )
 
     train_metrics = jax.device_get(train_metrics)
