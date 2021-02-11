@@ -2,6 +2,7 @@ import json
 import os
 from glob import glob
 from typing import List
+from functools import lru_cache
 
 import jax.numpy as jnp
 from joblib import Parallel, delayed
@@ -209,6 +210,7 @@ class CrystalDataset(Dataset):
     def get_id_list(self):
         return self._ids
 
+    @lru_cache(maxsize=None)  # Cache loaded structures
     def __getitem__(self, idx):
         data = self._inputs[idx]
         if self._train:
