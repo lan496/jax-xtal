@@ -50,6 +50,9 @@ class Normalizer:
     def denormalize(self, normed):
         return self._std * normed + self._mean
 
+    def denormalize_MAE(self, normed_mae):
+        return self._std * normed_mae
+
     @classmethod
     def from_targets(cls, targets):
         mean = np.mean(targets)
