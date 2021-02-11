@@ -6,7 +6,6 @@ jax/flax implementation of [Crystal Graph Convolutional Neural Networks (CGCNN)]
 - jax 0.2.9
 - jaxlib 0.1.59
 - flax 0.3.0
-- torch 1.7.1+cpu
 - python 3.8
 - Ubuntu 18.04
 

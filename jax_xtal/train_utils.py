@@ -9,7 +9,7 @@ from flax import serialization
 from tqdm import tqdm
 
 from jax_xtal.model import CGCNN
-from jax_xtal.data import get_dataloaders
+from jax_xtal.data import collate_pool
 
 
 @flax.struct.dataclass
@@ -126,9 +126,18 @@ def predict_one_step(apply_fn, batch, state: TrainState):
     return predictions
 
 
-def train_one_epoch(train_step_fn, state: TrainState, train_loader, epoch):
+def train_one_epoch(train_step_fn, state: TrainState, train_dataset, batch_size, epoch, rng):
+    # shuffle training data
+    train_size = len(train_dataset)
+    steps_per_epoch = train_size // batch_size
+    perms = jax.random.permutation(rng, train_size)
+    perms = perms[: steps_per_epoch * batch_size]  # skip incomplete batch
+    perms = perms.reshape((steps_per_epoch, batch_size))
+
     train_metrics = []
-    for batch in tqdm(train_loader):
+    for perm in tqdm(perms):
+        batch = collate_pool([train_dataset[idx] for idx in perm])
+
         state, metrics = train_step_fn(batch=batch, state=state)
         train_metrics.append(metrics)
     train_metrics = jax.device_get(train_metrics)
@@ -137,22 +146,16 @@ def train_one_epoch(train_step_fn, state: TrainState, train_loader, epoch):
     return state, train_summary
 
 
-def eval_model(val_step_fn, state: TrainState, val_loader):
-    eval_metrics = []
-    for batch in val_loader:
-        metrics = val_step_fn(batch=batch, state=state)
-        eval_metrics.append(metrics)
-    eval_metrics = jax.device_get(eval_metrics)
-    eval_summary = jax.tree_map(lambda x: x.mean(), eval_metrics)[0]
+def eval_model(val_step_fn, state: TrainState, val_dataset):
+    batch = collate_pool(val_dataset)
+    eval_summary = val_step_fn(batch=batch, state=state)
+    eval_summary = jax.device_get(eval_summary)
     return eval_summary
 
 
-def predict_dataset(test_step_fn, state: TrainState, dataloader):
-    test_predictions = []
-    for batch in dataloader:
-        predictions = test_step_fn(batch=batch, state=state)
-        test_predictions.append(predictions)
-    predictions = jnp.concatenate(test_predictions)  # (len(dataloader), 1)
+def predict_dataset(test_step_fn, state: TrainState, dataset):
+    batch = collate_pool(dataset)
+    predictions = test_step_fn(batch=batch, state=state)  # (len(dataset), 1)
     return predictions
 
 

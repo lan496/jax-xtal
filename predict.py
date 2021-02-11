@@ -4,16 +4,11 @@ import argparse
 
 import jax
 from jax.random import PRNGKey
-import torch
-from torch.utils.data import DataLoader
-import torch.multiprocessing as multiprocessing
 
 from jax_xtal.data import (
     AtomFeaturizer,
     BondFeaturizer,
-    CrystalDataset,
-    get_dataloaders,
-    collate_pool,
+    create_dataset,
 )
 from jax_xtal.model import CGCNN
 from jax_xtal.train_utils import (
@@ -26,7 +21,6 @@ from jax_xtal.config import load_config
 
 
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True, type=str, help="pre-trained parameters")
@@ -48,28 +42,22 @@ if __name__ == "__main__":
     structures_dir = (os.path.join(root_dir, "data", "structures_dummy"),)
 
     seed = config.seed
-    torch.manual_seed(seed)
     rng = PRNGKey(seed)
 
+    # prepare dataset
     atom_featurizer = AtomFeaturizer(atom_features_json=config.atom_init_features_path)
     bond_featurizer = BondFeaturizer(
         dmin=config.dmin, dmax=config.dmax, num_filters=config.num_bond_features
     )
-    dataset = CrystalDataset(
+    dataset, list_ids = create_dataset(
         atom_featurizer=atom_featurizer,
         bond_featurizer=bond_featurizer,
-        structures_dir=args.structures_dir,
+        structures_dir=config.structures_dir,
+        targets_csv_path=config.targets_csv_path,
         max_num_neighbors=config.max_num_neighbors,
         cutoff=config.cutoff,
-        train=False,
         seed=seed,
-    )
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        collate_fn=partial(collate_pool, train=False),
-        pin_memory=pin_memory,
+        n_jobs=config.n_jobs,
     )
 
     # load checkpoint
@@ -84,7 +72,7 @@ if __name__ == "__main__":
         rng=rng_state,
         model=model,
         max_num_neighbors=config.max_num_neighbors,
-        num_initial_atom_features=dataset.num_initial_atom_features,
+        num_initial_atom_features=atom_featurizer.num_initial_atom_features,
         num_bond_features=config.num_bond_features,
         learning_rate=config.learning_rate,
     )
@@ -92,8 +80,7 @@ if __name__ == "__main__":
 
     # prediction
     pred_step_fn = jax.jit(partial(predict_one_step, apply_fn=model.apply))
-    predictions = predict_dataset(pred_step_fn, state, dataloader)
-    list_ids = dataset.get_id_list()
+    predictions = predict_dataset(pred_step_fn, state, dataset)
     with open(args.output, "w") as f:
         for i, idx in enumerate(list_ids):
             f.write(f"{idx}, {predictions[i][0]}\n")

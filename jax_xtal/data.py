@@ -2,14 +2,12 @@ import json
 import os
 from glob import glob
 from typing import List
-from functools import lru_cache
 
 import jax.numpy as jnp
 from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
 from pymatgen.core import Structure, PeriodicSite
-from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 from tqdm import tqdm
 
 
@@ -119,7 +117,17 @@ class BondFeaturizer:
         return bond_features, neighbor_indices
 
 
-class CrystalDataset(Dataset):
+def create_dataset(
+    atom_featurizer: AtomFeaturizer,
+    bond_featurizer: BondFeaturizer,
+    structures_dir: str,
+    targets_csv_path: str = "",
+    train: bool = True,
+    max_num_neighbors: int = 12,
+    cutoff: float = 6.0,
+    seed=0,
+    n_jobs=1,
+):
     """
     Parameters
     ----------
@@ -139,89 +147,53 @@ class CrystalDataset(Dataset):
     train: bool
         if set False, targets_csv_path is not read.
     seed: int
+
+    Returns
+    -------
+    dataset: list of dict with the following keys
+        - neighbor_indices
+        - atom_features
+        - bond_features
+        - (Optional) target
+    ids: list of names of samples
     """
+    if not os.path.exists(structures_dir):
+        raise FileNotFoundError(f"structures_dir does not exist: {structures_dir}")
 
-    def __init__(
-        self,
-        atom_featurizer: AtomFeaturizer,
-        bond_featurizer: BondFeaturizer,
-        structures_dir: str,
-        targets_csv_path: str = "",
-        train: bool = True,
-        max_num_neighbors: int = 12,
-        cutoff: float = 6.0,
-        seed=0,
-        n_jobs=1,
-    ):
-        if not os.path.exists(structures_dir):
-            raise FileNotFoundError(f"structures_dir does not exist: {structures_dir}")
+    if train:
+        if not os.path.exists(targets_csv_path):
+            raise FileNotFoundError(f"targets_csv_path does not exist: {targets_csv_path}")
+        targets_csv_path = targets_csv_path
 
-        self._structures_dir = structures_dir
-
-        self._atom_featurizer = atom_featurizer
-        self._bond_featurizer = bond_featurizer
-        self._max_num_neighbors = max_num_neighbors
-        self._cutoff = cutoff
-
-        self._train = train
-        if self._train:
-            if not os.path.exists(targets_csv_path):
-                raise FileNotFoundError(f"targets_csv_path does not exist: {targets_csv_path}")
-            self._targets_csv_path = targets_csv_path
-
-            # load targets and shuffle indices
-            self._targets = pd.read_csv(
-                self._targets_csv_path, sep=",", header=None, names=["id", "target"]
-            )
-            rng_np = np.random.default_rng(seed)
-            self._targets = self._targets.iloc[rng_np.permutation(len(self._targets))].reset_index(
-                drop=True
-            )
-            self._ids = self._targets["id"].tolist()
-        else:
-            self._ids = list(
-                [
-                    os.path.basename(path).split(".")[0]
-                    for path in glob(os.path.join(structures_dir, "*.json"))
-                ]
-            )
-
-        # precompute datate
-        print("Preprocessing dataset")
-        self._inputs = Parallel(n_jobs, verbose=1)(
-            delayed(_create_inputs)(
-                self._ids[idx],
-                self._structures_dir,
-                self._atom_featurizer,
-                self._bond_featurizer,
-                self._max_num_neighbors,
-                self._cutoff,
-            )
-            for idx in range(len(self._ids))
+        # load targets and shuffle indices
+        targets = pd.read_csv(targets_csv_path, sep=",", header=None, names=["id", "target"])
+        rng_np = np.random.default_rng(seed)
+        targets = targets.iloc[rng_np.permutation(len(targets))].reset_index(drop=True)
+        ids = targets["id"].tolist()
+    else:
+        ids = list(
+            [
+                os.path.basename(path).split(".")[0]
+                for path in glob(os.path.join(structures_dir, "*.json"))
+            ]
         )
 
-    def __len__(self):
-        return len(self._ids)
+    # precompute datate
+    print("Preprocessing dataset")
+    inputs = Parallel(n_jobs, verbose=1)(
+        delayed(_create_inputs)(
+            ids[idx], structures_dir, atom_featurizer, bond_featurizer, max_num_neighbors, cutoff,
+        )
+        for idx in range(len(ids))
+    )
 
-    @property
-    def num_initial_atom_features(self):
-        return self._atom_featurizer.num_initial_atom_features
+    dataset = [{**inputs[idx]} for idx in range(len(ids))]
+    if train:
+        for idx in range(len(ids)):
+            target = targets.iloc[idx]["target"]
+            dataset[idx]["target"] = target
 
-    def get_id_list(self):
-        return self._ids
-
-    @lru_cache(maxsize=None)  # Cache loaded structures
-    def __getitem__(self, idx):
-        data = self._inputs[idx]
-        if self._train:
-            target = self._targets.iloc[idx]["target"]
-            data["target"] = target
-
-        return data
-
-
-def _create_inputs_wrapper(args):
-    return _create_inputs(*args)
+    return dataset, ids
 
 
 def _create_inputs(
@@ -248,15 +220,14 @@ def _create_inputs(
     return inputs
 
 
-def get_dataloaders(
-    dataset: CrystalDataset,
-    batch_size=1,
-    train_ratio=0.6,
-    val_ratio=0.2,
-    test_ratio=0.2,
-    num_workers=0,
-    pin_memory=False,
-):
+def split_dataset(dataset, train_ratio=0.6, val_ratio=0.2, test_ratio=0.2):
+    """
+    Returns
+    -------
+    train_dataset
+    val_dataset
+    test_dataset
+    """
     assert train_ratio + val_ratio + test_ratio <= 1.0
     total_size = len(dataset)
     train_size = int(train_ratio * total_size)
@@ -264,36 +235,15 @@ def get_dataloaders(
     test_size = int(test_ratio * total_size)
 
     indices = list(range(total_size))
-    train_sampler = SubsetRandomSampler(indices[:train_size])
-    val_sampler = SubsetRandomSampler(indices[train_size : (train_size + val_size)])
-    test_sampler = SubsetRandomSampler(indices[-test_size:])
+    train_indices = indices[:train_size]
+    val_indices = indices[train_size : (train_size + val_size)]
+    test_indices = indices[-test_size:]
 
-    train_loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        sampler=train_sampler,
-        num_workers=num_workers,
-        collate_fn=collate_pool,
-        pin_memory=pin_memory,
-    )
-    val_loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        sampler=val_sampler,
-        num_workers=num_workers,
-        collate_fn=collate_pool,
-        pin_memory=pin_memory,
-    )
-    test_loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        sampler=test_sampler,
-        num_workers=num_workers,
-        collate_fn=collate_pool,
-        pin_memory=pin_memory,
-    )
+    train_dataset = [dataset[idx] for idx in train_indices]
+    val_dataset = [dataset[idx] for idx in val_indices]
+    test_dataset = [dataset[idx] for idx in test_indices]
 
-    return train_loader, val_loader, test_loader
+    return train_dataset, val_dataset, test_dataset
 
 
 def collate_pool(samples, train=True):
@@ -307,7 +257,6 @@ def collate_pool(samples, train=True):
     Returns
     -------
     batch_data: has a following entries
-        - "id": (batch_size, )
         - "neighbor_indices": (N, max_num_neighbors)
         - "atom_features": (N, num_atom_features)
         - "bond_features": (N, max_num_neighbors, num_bond_features)

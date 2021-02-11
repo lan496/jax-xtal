@@ -17,7 +17,7 @@ setup(
     packages=find_packages("jax_xtal"),
     py_modules=[splitext(basename(path))[0] for path in glob("jax_xtal/*.py")],
     python_requires=">=3.7",
-    install_requires=["setuptools", "jax", "jaxlib", "flax", "torch", "numpy", "pymatgen",],
+    install_requires=["setuptools", "jax", "jaxlib", "flax", "numpy", "pymatgen",],
     tests_require=["pytest"],
     include_package_data=True,
     extras_requires={},
