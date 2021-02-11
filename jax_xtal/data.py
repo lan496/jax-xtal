@@ -2,6 +2,7 @@ import json
 import os
 from glob import glob
 from typing import List
+from logging import getLogger
 
 import jax
 import jax.numpy as jnp
@@ -10,6 +11,9 @@ import numpy as np
 import pandas as pd
 from pymatgen.core import Structure, PeriodicSite
 from tqdm import tqdm
+
+
+logger = getLogger("cgcnn")
 
 
 class AtomFeaturizer:
@@ -180,8 +184,8 @@ def create_dataset(
         )
 
     # precompute datate
-    print("Preprocessing dataset")
-    inputs = Parallel(n_jobs, verbose=1)(
+    logger.info("Preprocessing dataset")
+    inputs = Parallel(n_jobs)(
         delayed(_create_inputs)(
             ids[idx], structures_dir, atom_featurizer, bond_featurizer, max_num_neighbors, cutoff,
         )

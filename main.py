@@ -1,6 +1,7 @@
 import os
 from functools import partial
 import argparse
+from logging import StreamHandler, DEBUG, Formatter, FileHandler, getLogger
 
 import jax
 from jax.random import PRNGKey
@@ -24,6 +25,26 @@ from jax_xtal.train_utils import (
 from jax_xtal.config import load_config
 
 
+def get_module_logger(modname, log_path):
+    logger = getLogger(modname)
+
+    log_fmt = Formatter(
+        "%(asctime)s %(name)s %(lineno)d [%(levelname)s][%(funcName)s] %(message)s "
+    )
+    handler = StreamHandler()
+    handler.setLevel("INFO")
+    handler.setFormatter(log_fmt)
+    logger.addHandler(handler)
+
+    handler = FileHandler(log_path, "a")
+    handler.setLevel(DEBUG)
+    handler.setFormatter(log_fmt)
+    logger.setLevel(DEBUG)
+    logger.addHandler(handler)
+
+    return logger
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True, type=str, help="path for json config")
@@ -31,10 +52,17 @@ if __name__ == "__main__":
 
     config = load_config(args.config)
 
+    # logger
+    os.makedirs(config.log_dir, exist_ok=True)
+    log_basename = os.path.basename(args.config)
+    log_path = os.path.join(config.log_dir, f"{log_basename}.log")
+    logger = get_module_logger("cgcnn", log_path)
+
     seed = config.seed
     rng = PRNGKey(seed)
 
     # prepare dataset
+    logger.info("Load dataset")
     root_dir = os.path.dirname(__file__)
     atom_featurizer = AtomFeaturizer(atom_features_json=config.atom_init_features_path)
     bond_featurizer = BondFeaturizer(
@@ -67,6 +95,7 @@ if __name__ == "__main__":
     test_dataset = normalizer.normalize_dataset(test_dataset)
 
     # initialize model
+    logger.info("Initialize model")
     model = CGCNN(
         num_atom_features=config.num_atom_features,
         num_convs=config.num_convs,
@@ -104,7 +133,7 @@ if __name__ == "__main__":
     )
     val_step_fn = jax.jit(partial(eval_one_step, apply_fn=model.apply))
 
-    print("Start training")
+    logger.info("Start training")
     batch_size = config.batch_size
     epoch_metrics = []
     for epoch in range(1, config.num_epochs + 1):
@@ -114,20 +143,22 @@ if __name__ == "__main__":
         )
         train_loss = train_summary["loss"]
         train_mae = normalizer.denormalize_MAE(train_summary["mae"])
-        print(
+        logger.info(
             "Training - epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, train_loss, train_mae)
         )
         val_summary = eval_model(val_step_fn, state, val_dataset, batch_size)
         val_loss = val_summary["loss"]
         val_mae = normalizer.denormalize_MAE(val_summary["mae"])
-        print("Testing  - epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, val_loss, val_mae))
+        logger.info(
+            "Testing  - epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, val_loss, val_mae)
+        )
 
     test_summary = eval_model(val_step_fn, state, test_dataset, batch_size)
     test_loss = test_summary["loss"]
     test_mae = normalizer.denormalize_MAE(test_summary["mae"])
-    print("Testing  -            loss: %.2f, MAE: %.2f eV/atom" % (test_loss, test_mae))
+    logger.info("Testing  -            loss: %.2f, MAE: %.2f eV/atom" % (test_loss, test_mae))
 
-    print("Save checkpoint")
+    logger.info("Save checkpoint")
     workdir = config.checkpoint_dir
     os.makedirs(workdir, exist_ok=True)
     save_checkpoint(state, workdir)

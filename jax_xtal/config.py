@@ -43,6 +43,7 @@ class Config:
     num_workers: int = 1
     pin_memory: bool = False
     checkpoint_dir: str = "checkpoints"
+    log_dir: str = "log"
     seed: int = 0
     n_jobs: int = 1  # workers for preprocessing
 

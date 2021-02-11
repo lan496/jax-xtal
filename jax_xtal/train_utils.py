@@ -1,6 +1,7 @@
 import os
 from typing import Any
 from time import time
+from logging import getLogger
 
 import numpy as np
 import jax
@@ -8,10 +9,12 @@ import jax.numpy as jnp
 import flax
 from flax import optim
 from flax import serialization
-from tqdm import tqdm
 
 from jax_xtal.model import CGCNN
 from jax_xtal.data import collate_pool
+
+
+logger = getLogger("cgcnn")
 
 
 @flax.struct.dataclass
@@ -189,7 +192,7 @@ def train_one_epoch(
         time_step = time() - lap
         lap = time()
         if i % print_freq == 0:
-            print(
+            logger.info(
                 f"Epoch: [{epoch}][{i + 1}/{steps_per_epoch}]    Loss {metrics['loss']:.4f}    Time {time_step:.2f} sec/step"
             )
 
@@ -202,7 +205,7 @@ def train_one_epoch(
 def eval_model(val_step_fn, state: TrainState, val_dataset, batch_size):
     eval_metrics = []
     steps_per_epoch = (len(val_dataset) + batch_size - 1) // batch_size
-    for i in tqdm(range(steps_per_epoch)):
+    for i in range(steps_per_epoch):
         batch = collate_pool(val_dataset[i * batch_size : (i + 1) * batch_size])
         metrics = val_step_fn(batch=batch, state=state)
         eval_metrics.append(metrics)
@@ -214,7 +217,7 @@ def eval_model(val_step_fn, state: TrainState, val_dataset, batch_size):
 def predict_dataset(test_step_fn, state: TrainState, dataset, batch_size):
     steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
     predictions = []
-    for i in tqdm(range(steps_per_epoch)):
+    for i in range(steps_per_epoch):
         batch = collate_pool(dataset)
         preds = test_step_fn(batch=batch, state=state)
         predictions.append(preds)
