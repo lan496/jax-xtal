@@ -77,8 +77,9 @@ if __name__ == "__main__":
     state = restore_checkpoint(args.checkpoint, state)
 
     # prediction
-    pred_step_fn = jax.jit(partial(predict_one_step, apply_fn=model.apply))
-    predictions = predict_dataset(pred_step_fn, state, dataset, config.batch_size)
+    predictions = predict_dataset(
+        apply_fn=model.apply, state=state, dataset=dataset, batch_size=config.batch_size
+    )
 
     # denormalize predictions
     normalizer = Normalizer(state.sample_mean, state.sample_std)

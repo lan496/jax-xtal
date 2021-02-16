@@ -143,6 +143,7 @@ def train_one_step(apply_fn, batch, state: TrainState, learning_rate_fn, l2_reg)
     return new_state, metrics
 
 
+@partial(jax.jit, static_argnums=(0,))
 def eval_one_step(apply_fn, batch, state: TrainState):
     params = state.optimizer.target
     variables = {"params": params, **state.model_state}
@@ -158,6 +159,7 @@ def eval_one_step(apply_fn, batch, state: TrainState):
     return compute_metrics(predictions, batch["target"])
 
 
+@partial(jax.jit, static_argnums=(0,))
 def predict_one_step(apply_fn, batch, state: TrainState):
     params = state.optimizer.target
     variables = {"params": params, **state.model_state}
@@ -174,7 +176,15 @@ def predict_one_step(apply_fn, batch, state: TrainState):
 
 
 def train_one_epoch(
-    train_step_fn, state: TrainState, train_dataset, batch_size, epoch, rng, print_freq=10
+    apply_fn,
+    state: TrainState,
+    train_dataset,
+    batch_size,
+    learning_rate_fn,
+    l2_reg,
+    epoch,
+    rng,
+    print_freq=10,
 ):
     # shuffle training data
     train_size = len(train_dataset)
@@ -188,7 +198,7 @@ def train_one_epoch(
     for i, perm in enumerate(perms):
         batch = collate_pool([train_dataset[idx] for idx in perm])
 
-        state, metrics = train_step_fn((batch, state))
+        state, metrics = train_one_step(apply_fn, batch, state, learning_rate_fn, l2_reg)
         train_metrics.append(metrics)
 
         time_step = time() - lap
@@ -204,24 +214,24 @@ def train_one_epoch(
     return state, train_summary
 
 
-def eval_model(val_step_fn, state: TrainState, val_dataset, batch_size):
+def eval_model(apply_fn, state: TrainState, val_dataset, batch_size):
     eval_metrics = []
     steps_per_epoch = (len(val_dataset) + batch_size - 1) // batch_size
     for i in range(steps_per_epoch):
         batch = collate_pool(val_dataset[i * batch_size : (i + 1) * batch_size])
-        metrics = val_step_fn(batch=batch, state=state)
+        metrics = eval_one_step(apply_fn, batch, state)
         eval_metrics.append(metrics)
     eval_summary = jax.device_get(eval_metrics)
     eval_summary = jax.tree_map(lambda x: x.mean(), eval_summary)[0]
     return eval_summary
 
 
-def predict_dataset(test_step_fn, state: TrainState, dataset, batch_size):
+def predict_dataset(apply_fn, state: TrainState, dataset, batch_size):
     steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
     predictions = []
     for i in range(steps_per_epoch):
         batch = collate_pool(dataset)
-        preds = test_step_fn(batch=batch, state=state)
+        preds = predict_one_step(apply_fn, batch, state)
         predictions.append(preds)
     predictions = jnp.concatenate(predictions)  # (len(dataset), 1)
     return predictions

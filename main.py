@@ -3,6 +3,7 @@ from functools import partial
 import argparse
 from logging import StreamHandler, DEBUG, Formatter, FileHandler, getLogger
 
+import jax.profiler
 import jax
 from jax.random import PRNGKey
 from jax_xtal.data import (
@@ -123,32 +124,40 @@ if __name__ == "__main__":
         milestones=config.milestones,
     )
 
-    train_step_fn = lambda batch_state: train_one_step(  # noqa: E731
-        model.apply, batch_state[0], batch_state[1], learning_rate_fn, config.l2_reg
-    )
-    val_step_fn = jax.jit(partial(eval_one_step, apply_fn=model.apply))
-
     logger.info("Start training")
     batch_size = config.batch_size
     epoch_metrics = []
     for epoch in range(1, config.num_epochs + 1):
         rng, rng_train = jax.random.split(rng)
         state, train_summary = train_one_epoch(
-            train_step_fn, state, train_dataset, batch_size, epoch, rng_train, config.print_freq
+            apply_fn=model.apply,
+            state=state,
+            train_dataset=train_dataset,
+            batch_size=batch_size,
+            learning_rate_fn=learning_rate_fn,
+            l2_reg=config.l2_reg,
+            epoch=epoch,
+            rng=rng_train,
+            print_freq=config.print_freq,
         )
         train_loss = train_summary["loss"]
         train_mae = normalizer.denormalize_MAE(train_summary["mae"])
         logger.info(
             "Training - epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, train_loss, train_mae)
         )
-        val_summary = eval_model(val_step_fn, state, val_dataset, batch_size)
+        val_summary = eval_model(
+            apply_fn=model.apply, state=state, val_dataset=val_dataset, batch_size=batch_size
+        )
         val_loss = val_summary["loss"]
         val_mae = normalizer.denormalize_MAE(val_summary["mae"])
         logger.info(
             "Testing  - epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, val_loss, val_mae)
         )
+        jax.profiler.save_device_memory_profile(f"memory_{epoch}.prof")
 
-    test_summary = eval_model(val_step_fn, state, test_dataset, batch_size)
+    test_summary = eval_model(
+        apply_fn=model.apply, state=state, val_dataset=test_dataset, batch_size=batch_size,
+    )
     test_loss = test_summary["loss"]
     test_mae = normalizer.denormalize_MAE(test_summary["mae"])
     logger.info("Testing  -            loss: %.2f, MAE: %.2f eV/atom" % (test_loss, test_mae))
