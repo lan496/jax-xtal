@@ -2,6 +2,7 @@ import os
 from typing import Any
 from time import time
 from logging import getLogger
+from functools import partial
 
 import numpy as np
 import jax
@@ -96,6 +97,7 @@ def multi_step_lr(step: int, steps_per_epoch, learning_rate: float, milestones: 
     return decayed
 
 
+@partial(jax.jit, static_argnums=(0, 3, 4))
 def train_one_step(apply_fn, batch, state: TrainState, learning_rate_fn, l2_reg):
     """
     Parameters
@@ -186,7 +188,7 @@ def train_one_epoch(
     for i, perm in enumerate(perms):
         batch = collate_pool([train_dataset[idx] for idx in perm])
 
-        state, metrics = train_step_fn(batch=batch, state=state)
+        state, metrics = train_step_fn((batch, state))
         train_metrics.append(metrics)
 
         time_step = time() - lap

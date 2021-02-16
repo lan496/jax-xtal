@@ -123,13 +123,8 @@ if __name__ == "__main__":
         milestones=config.milestones,
     )
 
-    train_step_fn = jax.jit(
-        partial(
-            train_one_step,
-            apply_fn=model.apply,
-            learning_rate_fn=learning_rate_fn,
-            l2_reg=config.l2_reg,
-        )
+    train_step_fn = lambda batch_state: train_one_step(  # noqa: E731
+        model.apply, batch_state[0], batch_state[1], learning_rate_fn, config.l2_reg
     )
     val_step_fn = jax.jit(partial(eval_one_step, apply_fn=model.apply))
 
