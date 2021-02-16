@@ -85,6 +85,7 @@ if __name__ == "__main__":
         val_ratio=config.val_ratio,
         test_ratio=config.test_ratio,
     )
+    del dataset
 
     # normalize target value
     num_norm_samples = min(500, len(train_dataset))
@@ -115,7 +116,7 @@ if __name__ == "__main__":
     )
 
     # MultiStepLR scheduelr for learning rate
-    train_size = int(len(dataset) * config.train_ratio)
+    train_size = len(train_dataset)
     steps_per_epoch = train_size // config.batch_size
     learning_rate_fn = partial(
         multi_step_lr,

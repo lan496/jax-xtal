@@ -251,7 +251,6 @@ def split_dataset(dataset, train_ratio=0.6, val_ratio=0.2, test_ratio=0.2):
     return train_dataset, val_dataset, test_dataset
 
 
-@jax.jit
 def collate_pool(samples, train=True):
     """
     relabel atoms in a batch
