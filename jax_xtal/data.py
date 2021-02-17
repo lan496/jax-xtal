@@ -1,8 +1,9 @@
 import json
 import os
 from glob import glob
-from typing import List
+from typing import List, Mapping, Any
 from logging import getLogger
+from functools import partial
 
 import jax
 import jax.numpy as jnp
@@ -11,6 +12,9 @@ import numpy as np
 import pandas as pd
 from pymatgen.core import Structure, PeriodicSite
 from tqdm import tqdm
+
+
+Batch = Mapping[str, Any]
 
 
 logger = getLogger("cgcnn")
@@ -251,7 +255,8 @@ def split_dataset(dataset, train_ratio=0.6, val_ratio=0.2, test_ratio=0.2):
     return train_dataset, val_dataset, test_dataset
 
 
-def collate_pool(samples, train=True):
+@partial(jax.jit, static_argnums=(1,))
+def collate_pool(samples, train=True) -> Batch:
     """
     relabel atoms in a batch
 
@@ -289,9 +294,9 @@ def collate_pool(samples, train=True):
         index_offset += num_atoms_i
 
     batch_data = {
-        "neighbor_indices": jnp.concatenate(batch_neighbor_indices, axis=0),
-        "atom_features": jnp.concatenate(batch_atom_features, axis=0),
-        "bond_features": jnp.concatenate(batch_bond_features, axis=0),
+        "neighbor_indices": jnp.concatenate(batch_neighbor_indices, axis=0).astype(jnp.int32),
+        "atom_features": jnp.concatenate(batch_atom_features, axis=0).astype(jnp.float32),
+        "bond_features": jnp.concatenate(batch_bond_features, axis=0).astype(jnp.float32),
         "atom_indices": atom_indices,
     }
     if train:

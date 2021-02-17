@@ -1,28 +1,39 @@
 from functools import partial
+from typing import Any, Mapping
 
-from flax import linen as nn
-from flax.linen import Dense, Embed, BatchNorm, softplus, sigmoid
+import haiku as hk
+from haiku import BatchNorm, Linear
 import jax
 import jax.numpy as jnp
 
 
-class CGConv(nn.Module):
+Batch = Mapping[str, jnp.ndarray]
+
+
+class CGConv(hk.Module):
     """
     Convolutional layer in Eq. (5)
     """
 
-    @nn.compact
-    def __call__(self, neighbor_indices, atom_features, bond_features, train: bool = True):
+    def __init__(self, num_atom_features: int, max_num_neighbors: int, name: str = None):
+        super().__init__()
+        self._num_atom_features = num_atom_features
+        self._max_num_neighbors = max_num_neighbors
+
+    def __call__(
+        self,
+        neighbor_indices: jnp.ndarray,
+        atom_features: jnp.ndarray,
+        bond_features: jnp.ndarray,
+        train: bool = True,
+    ):
         """
         Let the total number of atoms in the batch be N,
         neighbor_indices: (N, max_num_neighbors)
         atom_features: (N, num_atom_features)
         bond_features: (N, max_num_neighbors, num_bond_features)
         """
-        norm = partial(BatchNorm, use_running_average=not train, use_scale=False, use_bias=False,)
-
-        num_atoms_batch, max_num_neighbors = neighbor_indices.shape
-        num_atom_features = atom_features.shape[1]
+        num_atoms_batch = neighbor_indices.shape[0]
 
         # (N, max_num_neighbors, num_atom_features)
         atom_neighbor_features = atom_features[neighbor_indices, :]
@@ -30,41 +41,49 @@ class CGConv(nn.Module):
             [
                 jnp.broadcast_to(
                     atom_features[:, None, :],
-                    (num_atoms_batch, max_num_neighbors, num_atom_features),
+                    (num_atoms_batch, self._max_num_neighbors, self._num_atom_features),
                 ),
                 atom_neighbor_features,
                 bond_features,
             ],
             axis=2,
         )
-        total_gated_features = Dense(2 * num_atom_features, name="cgweight")(
+        total_gated_features = Linear(2 * self._num_atom_features, name="cgweight")(
             total_neighbor_features
         )
-        total_gated_features = norm(name="bn_1")(
-            total_gated_features.reshape(-1, 2 * num_atom_features)
+        total_gated_features = BatchNorm(
+            create_scale=True, create_offset=True, decay_rate=1.0, name="bn_1"
+        )(
+            total_gated_features.reshape(-1, 2 * self._num_atom_features),
+            is_training=train,
+            test_local_stats=True,
         ).reshape(
-            num_atoms_batch, max_num_neighbors, 2 * num_atom_features
+            num_atoms_batch, self._max_num_neighbors, 2 * self._num_atom_features
         )  # TODO: why reshape here?
 
         neighbor_filter, neighbor_core = jnp.split(total_gated_features, 2, axis=2)
-        neighbor_filter = sigmoid(neighbor_filter)
-        neighbor_core = softplus(neighbor_core)
+        neighbor_filter = jax.nn.sigmoid(neighbor_filter)
+        neighbor_core = jax.nn.softplus(neighbor_core)
 
         neighbor_summed = jnp.sum(
             neighbor_filter * neighbor_core, axis=1
         )  # (N, num_atom_features)
-        neighbor_summed = norm(name="bn_2")(neighbor_summed)
-        out = softplus(atom_features + neighbor_summed)  # TODO: defer from Eq. (5) ?
+        neighbor_summed = BatchNorm(
+            create_scale=True, create_offset=True, decay_rate=1.0, name="bn_2"
+        )(neighbor_summed, is_training=train, test_local_stats=True)
+        out = jax.nn.softplus(atom_features + neighbor_summed)  # TODO: defer from Eq. (5) ?
         return out
 
 
-class CGPooling(nn.Module):
+class CGPooling(hk.Module):
     """
     average-pooling over each crystal in a batch
     """
 
-    @nn.compact
-    def __call__(self, atom_features, atom_indices):
+    def __init__(self, name=None):
+        super().__init__()
+
+    def __call__(self, atom_features: jnp.ndarray, atom_indices: jnp.ndarray):
         """
         Parameters
         ----------
@@ -82,30 +101,64 @@ class CGPooling(nn.Module):
         return averaged_features
 
 
-class CGCNN(nn.Module):
+class CGCNN(hk.Module):
     """
     Crystal Graph Convolutional Neural Network
     """
 
-    num_atom_features: int
-    num_convs: int
-    num_hidden_layers: int
-    num_hidden_features: int
-
-    @nn.compact
-    def __call__(
-        self, neighbor_indices, atom_features, bond_features, atom_indices, train: bool = True
+    def __init__(
+        self,
+        num_atom_features: int,
+        num_convs: int,
+        num_hidden_layers: int,
+        num_hidden_features: int,
+        max_num_neighbors: int,
     ):
-        atom_features = nn.Dense(self.num_atom_features, name="embedding")(atom_features)
-        for i in range(self.num_convs):
-            atom_features = CGConv(name=f"cgconv_{i}")(
-                neighbor_indices, atom_features, bond_features, train
-            )
+        super().__init__()
+        self._num_atom_features = num_atom_features
+        self._num_convs = num_convs
+        self._num_hidden_layers = num_hidden_layers
+        self._num_hidden_features = num_hidden_features
+        self._max_num_neighbors = max_num_neighbors
+
+    def __call__(
+        self,
+        neighbor_indices: jnp.ndarray,
+        atom_features: jnp.ndarray,
+        bond_features: jnp.ndarray,
+        atom_indices: jnp.ndarray,
+        train: bool = True,
+    ):
+        atom_features = Linear(self._num_atom_features, name="embedding")(atom_features)
+        for i in range(self._num_convs):
+            atom_features = CGConv(
+                self._num_atom_features, self._max_num_neighbors, name=f"cgconv_{i}"
+            )(neighbor_indices, atom_features, bond_features, train)
 
         crystal_features = CGPooling(name="cgpooling")(atom_features, atom_indices)
-        crystal_features = softplus(crystal_features)
-        for i in range(self.num_hidden_layers):
-            crystal_features = nn.Dense(self.num_hidden_features, name=f"fc_{i}")(crystal_features)
-            crystal_features = softplus(crystal_features)
-        out = nn.Dense(1, name="fc_last")(crystal_features)
+        crystal_features = jax.nn.softplus(crystal_features)
+        for i in range(self._num_hidden_layers):
+            crystal_features = Linear(self._num_hidden_features, name=f"fc_{i}")(crystal_features)
+            crystal_features = jax.nn.softplus(crystal_features)
+        out = Linear(1, name="fc_last")(crystal_features)
         return out
+
+
+def get_model_fn_t(
+    num_atom_features: int,
+    num_convs: int,
+    num_hidden_layers: int,
+    num_hidden_features: int,
+    max_num_neighbors: int,
+):
+    def model_fn(batch: Batch, train: bool) -> jnp.ndarray:
+        model = CGCNN(
+            num_atom_features, num_convs, num_hidden_layers, num_hidden_features, max_num_neighbors
+        )
+        neighbor_indices = batch["neighbor_indices"]
+        atom_features = batch["atom_features"]
+        bond_features = batch["bond_features"]
+        atom_indices = batch["atom_indices"]
+        return model(neighbor_indices, atom_features, bond_features, atom_indices, train)
+
+    return hk.transform_with_state(model_fn)

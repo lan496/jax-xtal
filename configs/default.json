@@ -1,8 +1,5 @@
 {
     "structures_dir": "data/structures",
     "targets_csv_path": "data/formation_energy_per_atom.csv",
-    "num_workers": 2,
-    "pin_memory": false,
-    "batch_size": 2,
     "n_jobs": 8
 }
