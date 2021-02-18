@@ -29,7 +29,7 @@ class CGConv(hk.Module):
         neighbor_indices: jnp.ndarray,
         atom_features: jnp.ndarray,
         bond_features: jnp.ndarray,
-        train: bool = True,
+        is_training: bool = True,
     ):
         """
         Let the total number of atoms in the batch be N,
@@ -54,7 +54,7 @@ class CGConv(hk.Module):
         )
         total_gated_features = self._cgweight(total_neighbor_features)
         total_gated_features = self._bn1(
-            total_gated_features.reshape(-1, 2 * self._num_atom_features), is_training=train,
+            total_gated_features.reshape(-1, 2 * self._num_atom_features), is_training=is_training,
         ).reshape(
             num_atoms_batch, self._max_num_neighbors, 2 * self._num_atom_features
         )  # TODO: why reshape here?
@@ -66,7 +66,7 @@ class CGConv(hk.Module):
         neighbor_summed = jnp.sum(
             neighbor_filter * neighbor_core, axis=1
         )  # (N, num_atom_features)
-        neighbor_summed = self._bn2(neighbor_summed, is_training=train)
+        neighbor_summed = self._bn2(neighbor_summed, is_training=is_training)
         out = jax.nn.softplus(atom_features + neighbor_summed)  # TODO: defer from Eq. (5) ?
         return out
 
@@ -136,11 +136,13 @@ class CGCNN(hk.Module):
         atom_features: jnp.ndarray,
         bond_features: jnp.ndarray,
         atom_indices: jnp.ndarray,
-        train: bool = True,
+        is_training: bool = True,
     ):
         atom_features = self._embedding(atom_features)
         for i in range(self._num_convs):
-            atom_features = self._cgconvs[i](neighbor_indices, atom_features, bond_features, train)
+            atom_features = self._cgconvs[i](
+                neighbor_indices, atom_features, bond_features, is_training
+            )
 
         crystal_features = self._cgpooling(atom_features, atom_indices)
         crystal_features = jax.nn.softplus(crystal_features)
@@ -158,7 +160,7 @@ def get_model_fn_t(
     num_hidden_features: int,
     max_num_neighbors: int,
 ):
-    def model_fn(batch: Batch, train: bool) -> jnp.ndarray:
+    def model_fn(batch: Batch, is_training: bool) -> jnp.ndarray:
         model = CGCNN(
             num_atom_features, num_convs, num_hidden_layers, num_hidden_features, max_num_neighbors
         )
@@ -166,6 +168,6 @@ def get_model_fn_t(
         atom_features = batch["atom_features"]
         bond_features = batch["bond_features"]
         atom_indices = batch["atom_indices"]
-        return model(neighbor_indices, atom_features, bond_features, atom_indices, train)
+        return model(neighbor_indices, atom_features, bond_features, atom_indices, is_training)
 
     return hk.transform_with_state(model_fn)

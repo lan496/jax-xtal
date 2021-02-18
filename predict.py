@@ -30,7 +30,7 @@ def main(config: Config, ckpt_path: str, structures_dir: str, output: str):
         targets_csv_path="",
         max_num_neighbors=config.max_num_neighbors,
         cutoff=config.cutoff,
-        train=False,
+        is_training=False,
         seed=config.seed,
         n_jobs=config.n_jobs,
     )
@@ -50,7 +50,7 @@ def main(config: Config, ckpt_path: str, structures_dir: str, output: str):
 
     @jax.jit
     def predict_one_step(batch: Batch) -> jnp.ndarray:
-        predictions, _ = model.apply(params, state, batch, train=False)
+        predictions, _ = model.apply(params, state, batch, is_training=False)
         predictions = jnp.squeeze(predictions, axis=-1)
         return predictions
 

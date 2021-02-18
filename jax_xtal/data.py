@@ -131,7 +131,7 @@ def create_dataset(
     bond_featurizer: BondFeaturizer,
     structures_dir: str,
     targets_csv_path: str = "",
-    train: bool = True,
+    is_training: bool = True,
     max_num_neighbors: int = 12,
     cutoff: float = 6.0,
     seed=0,
@@ -153,7 +153,7 @@ def create_dataset(
         path for json files of pymatgen's structures
     targets_csv_path:
         comma delimiter, no header
-    train: bool
+    is_training: bool
         if set False, targets_csv_path is not read.
     seed: int
 
@@ -169,7 +169,7 @@ def create_dataset(
     if not os.path.exists(structures_dir):
         raise FileNotFoundError(f"structures_dir does not exist: {structures_dir}")
 
-    if train:
+    if is_training:
         if not os.path.exists(targets_csv_path):
             raise FileNotFoundError(f"targets_csv_path does not exist: {targets_csv_path}")
         targets_csv_path = targets_csv_path
@@ -197,7 +197,7 @@ def create_dataset(
     )
 
     dataset = [{**inputs[idx]} for idx in range(len(ids))]
-    if train:
+    if is_training:
         for idx in range(len(ids)):
             target = targets.iloc[idx]["target"]
             dataset[idx]["target"] = target

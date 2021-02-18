@@ -111,7 +111,7 @@ def main(config: Config):
     logger.info("Initialize model and optimizer")
     init_batch = collate_pool(train_dataset[:2], False)
     rng, init_rng = jax.random.split(rng)
-    params, state = model.init(init_rng, init_batch, train=False)
+    params, state = model.init(init_rng, init_batch, is_training=True)
     opt_state = optimizer.init(params)
     num_params = hk.data_structures.tree_size(params)
     byte_size = hk.data_structures.tree_bytes(params)  # size with f32
@@ -130,7 +130,7 @@ def main(config: Config):
     # Evaluate metrics
     @jax.jit
     def compute_metrics(params: hk.Params, state: hk.Params, batch: Batch) -> Metrics:
-        predictions, _ = model.apply(params, state, batch, train=False)
+        predictions, _ = model.apply(params, state, batch, is_training=False)
         predictions = jnp.squeeze(predictions, axis=-1)
         mse = mean_squared_error(predictions, batch["target"])
         mae = mean_absolute_error(predictions, batch["target"])

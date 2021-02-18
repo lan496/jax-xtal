@@ -42,7 +42,7 @@ def test_cgcnn_forward():
     batch_size = 2
     batch = collate_pool(dataset[:batch_size], False)
     rng, init_rng = jax.random.split(rng)
-    params, state = model.init(init_rng, batch, train=True)
+    params, state = model.init(init_rng, batch, is_training=True)
 
-    _ = model.apply(params, state, batch, train=True)
-    _ = model.apply(params, state, batch, train=False)
+    _ = model.apply(params, state, batch, is_training=True)
+    _ = model.apply(params, state, batch, is_training=False)
