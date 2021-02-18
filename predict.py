@@ -1,28 +1,78 @@
 import os
-from functools import partial
 import argparse
 
+import haiku as hk
 import jax
-from jax.random import PRNGKey
+import jax.numpy as jnp
 
 from jax_xtal.data import (
     AtomFeaturizer,
     BondFeaturizer,
     create_dataset,
+    Batch,
+    collate_pool,
 )
-from jax_xtal.model import CGCNN
-from jax_xtal.train_utils import (
-    create_train_state,
-    predict_one_step,
-    predict_dataset,
-    restore_checkpoint,
-    Normalizer,
-)
-from jax_xtal.config import load_config
+from jax_xtal.model import get_model_fn_t
+from jax_xtal.train_utils import restore_checkpoint, Normalizer
+from jax_xtal.config import load_config, Config
+
+
+def main(config: Config, ckpt_path: str, structures_dir: str, output: str):
+    # Prepare test dataset
+    atom_featurizer = AtomFeaturizer(atom_features_json=config.atom_init_features_path)
+    bond_featurizer = BondFeaturizer(
+        dmin=config.dmin, dmax=config.dmax, num_filters=config.num_bond_features
+    )
+    dataset, list_ids = create_dataset(
+        atom_featurizer=atom_featurizer,
+        bond_featurizer=bond_featurizer,
+        structures_dir=structures_dir,
+        targets_csv_path="",
+        max_num_neighbors=config.max_num_neighbors,
+        cutoff=config.cutoff,
+        train=False,
+        seed=config.seed,
+        n_jobs=config.n_jobs,
+    )
+
+    # Define model
+    model_fn_t = get_model_fn_t(
+        num_atom_features=config.num_atom_features,
+        num_convs=config.num_convs,
+        num_hidden_layers=config.num_hidden_layers,
+        num_hidden_features=config.num_hidden_features,
+        max_num_neighbors=config.max_num_neighbors,
+    )
+    model = hk.without_apply_rng(model_fn_t)
+
+    # Load checkpoint
+    params, state, normalizer = restore_checkpoint(ckpt_path)
+
+    @jax.jit
+    def predict_one_step(batch: Batch) -> jnp.ndarray:
+        predictions, _ = model.apply(params, state, batch, train=False)
+        predictions = jnp.squeeze(predictions, axis=-1)
+        return predictions
+
+    # Prediction
+    batch_size = config.batch_size
+    steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
+    predictions = []
+    for i in range(steps_per_epoch):
+        batch = collate_pool(dataset, False)  # train=False
+        preds = predict_one_step(batch)
+        predictions.append(preds)
+    predictions = jnp.concatenate(predictions)  # (len(dataset), )
+
+    # denormalize predictions
+    denormed_preds = normalizer.denormalize(predictions)
+
+    with open(args.output, "w") as f:
+        for i, idx in enumerate(list_ids):
+            f.write(f"{idx},{denormed_preds[i]}\n")
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", required=True, type=str, help="pre-trained parameters")
     parser.add_argument("--config", required=True, type=str, help="json config used for training")
@@ -34,57 +84,4 @@ if __name__ == "__main__":
 
     config = load_config(args.config)
 
-    root_dir = os.path.dirname(__file__)
-    atom_init_features_path = os.path.join(root_dir, "data", "atom_init.json")
-    structures_dir = (os.path.join(root_dir, "data", "structures_dummy"),)
-
-    seed = config.seed
-    rng = PRNGKey(seed)
-
-    # prepare dataset
-    atom_featurizer = AtomFeaturizer(atom_features_json=config.atom_init_features_path)
-    bond_featurizer = BondFeaturizer(
-        dmin=config.dmin, dmax=config.dmax, num_filters=config.num_bond_features
-    )
-    dataset, list_ids = create_dataset(
-        atom_featurizer=atom_featurizer,
-        bond_featurizer=bond_featurizer,
-        structures_dir=config.structures_dir,
-        targets_csv_path=config.targets_csv_path,
-        max_num_neighbors=config.max_num_neighbors,
-        cutoff=config.cutoff,
-        seed=seed,
-        n_jobs=config.n_jobs,
-    )
-
-    # load checkpoint
-    model = CGCNN(
-        num_atom_features=config.num_atom_features,
-        num_convs=config.num_convs,
-        num_hidden_layers=config.num_hidden_layers,
-        num_hidden_features=config.num_hidden_features,
-    )
-    rng, rng_state = jax.random.split(rng)
-    state = create_train_state(
-        rng=rng_state,
-        model=model,
-        max_num_neighbors=config.max_num_neighbors,
-        num_initial_atom_features=atom_featurizer.num_initial_atom_features,
-        num_bond_features=config.num_bond_features,
-        learning_rate=config.learning_rate,
-        normalizer=Normalizer(0, 0),  # dummy normalizer instance
-    )
-    state = restore_checkpoint(args.checkpoint, state)
-
-    # prediction
-    predictions = predict_dataset(
-        apply_fn=model.apply, state=state, dataset=dataset, batch_size=config.batch_size
-    )
-
-    # denormalize predictions
-    normalizer = Normalizer(state.sample_mean, state.sample_std)
-    denormed_preds = normalizer.denormalize(predictions)
-
-    with open(args.output, "w") as f:
-        for i, idx in enumerate(list_ids):
-            f.write(f"{idx}, {denormed_preds[i][0]}\n")
+    main(config, args.checkpoint, args.structures_dir, args.output)

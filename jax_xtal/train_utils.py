@@ -64,44 +64,6 @@ def mean_absolute_error(predictions, targets):
     return jnp.mean(jnp.abs(predictions - targets), axis=None)
 
 
-def compute_metrics(predictions, targets):
-    mse = mean_squared_error(predictions, targets)
-    mae = mean_absolute_error(predictions, targets)
-    metrics = {
-        "loss": mse,
-        "mae": mae,
-    }
-    return metrics
-
-
-# @partial(jax.jit, static_argnums=(0,))
-# def predict_one_step(apply_fn, batch, state: TrainState):
-#     params = state.optimizer.target
-#     variables = {"params": params, **state.model_state}
-#     predictions = apply_fn(
-#         variables,
-#         batch["neighbor_indices"],
-#         batch["atom_features"],
-#         batch["bond_features"],
-#         batch["atom_indices"],
-#         train=False,
-#         mutable=False,
-#     )
-#     return predictions
-
-
-# def predict_dataset(apply_fn, state: TrainState, dataset, batch_size):
-#     from jax_xtal.data import collate_pool
-#     steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
-#     predictions = []
-#     for i in range(steps_per_epoch):
-#         batch = collate_pool(dataset)
-#         preds = predict_one_step(apply_fn, batch, state)
-#         predictions.append(preds)
-#     predictions = jnp.concatenate(predictions)  # (len(dataset), 1)
-#     return predictions
-
-
 def save_checkpoint(params: hk.Params, state: hk.State, normalizer: Normalizer, workdir: str):
     ckpt_path = os.path.join(workdir, f"checkpoint.pkl")
     with open(ckpt_path, "wb") as f:
