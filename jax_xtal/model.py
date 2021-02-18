@@ -16,7 +16,7 @@ class CGConv(hk.Module):
     """
 
     def __init__(self, num_atom_features: int, max_num_neighbors: int, name: str = None):
-        super().__init__()
+        super().__init__(name=name)
         self._num_atom_features = num_atom_features
         self._max_num_neighbors = max_num_neighbors
 
@@ -81,7 +81,7 @@ class CGPooling(hk.Module):
     """
 
     def __init__(self, name=None):
-        super().__init__()
+        super().__init__(name=name)
 
     def __call__(self, atom_features: jnp.ndarray, atom_indices: jnp.ndarray):
         """
@@ -113,8 +113,9 @@ class CGCNN(hk.Module):
         num_hidden_layers: int,
         num_hidden_features: int,
         max_num_neighbors: int,
+        name=None,
     ):
-        super().__init__()
+        super().__init__(name=name)
         self._num_atom_features = num_atom_features
         self._num_convs = num_convs
         self._num_hidden_layers = num_hidden_layers

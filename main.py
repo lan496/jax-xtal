@@ -118,11 +118,9 @@ def main(config: Config):
     logger.info(f"{num_params} params, size={byte_size/1e6:.2f}MB")
 
     # Loss function
-    @partial(jax.jit, static_argnums=(3,))
-    def loss_fn(
-        params: hk.Params, state: hk.State, batch: Batch, train: bool
-    ) -> Tuple[jnp.ndarray, hk.State]:
-        predictions, state = model.apply(params, state, batch, train)
+    @jax.jit
+    def loss_fn(params: hk.Params, state: hk.State, batch: Batch) -> Tuple[jnp.ndarray, hk.State]:
+        predictions, state = model.apply(params, state, batch, True)  # train=True
         predictions = jnp.squeeze(predictions, axis=-1)
 
         mse = mean_squared_error(predictions, batch["target"])
@@ -147,20 +145,19 @@ def main(config: Config):
     def update(
         params: hk.Params, state: hk.State, opt_state: OptState, batch: Batch
     ) -> Tuple[hk.Params, hk.State, OptState, jnp.float32]:
-        (loss, state), grads = jax.value_and_grad(loss_fn, has_aux=True)(
-            params, state, batch, True
-        )  # train=True
+        (loss, state), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, state, batch)
         updates, opt_state = optimizer.update(grads, opt_state)
         params = optax.apply_updates(params, updates)
-        return params, state, opt_state, loss  # TODO: static_argnums=(3,) ?
+        return params, state, opt_state, loss
 
     def train_one_epoch(
-        params: hk.Params, state: hk.State, opt_state: OptState
+        params: hk.Params, state: hk.State, opt_state: OptState, rng_train
     ) -> Tuple[hk.Params, hk.State, OptState, Metrics]:
         # shuffle training data
+        batch_size = config.batch_size
         train_size = len(train_dataset)
         steps_per_epoch = train_size // batch_size
-        perms = jax.random.permutation(rng, train_size)
+        perms = jax.random.permutation(rng_train, train_size)
         perms = perms[: steps_per_epoch * batch_size]  # skip incomplete batch
         perms = perms.reshape((steps_per_epoch, batch_size))
 
@@ -198,9 +195,11 @@ def main(config: Config):
 
     # Train/eval loop
     logger.info("Start training")
-    batch_size = config.batch_size
     for epoch in range(1, config.num_epochs + 1):
-        params, state, opt_state, train_summary = train_one_epoch(params, state, opt_state)
+        rng, rng_train = jax.random.split(rng)
+        params, state, opt_state, train_summary = train_one_epoch(
+            params, state, opt_state, rng_train
+        )
         train_loss = train_summary["mse"]
         train_mae = normalizer.denormalize_MAE(train_summary["mae"])
         logger.info(
@@ -213,6 +212,7 @@ def main(config: Config):
         logger.info(
             "[Eval] epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, val_loss, val_mae)
         )
+        jax.profiler.save_device_memory_profile(f"memory{epoch}.prof")
 
     test_summary = eval_model(params, state, test_dataset)
     test_loss = test_summary["mse"]

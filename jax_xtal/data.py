@@ -189,7 +189,7 @@ def create_dataset(
 
     # precompute datate
     logger.info("Preprocessing dataset")
-    inputs = Parallel(n_jobs)(
+    inputs = Parallel(n_jobs, verbose=1)(
         delayed(_create_inputs)(
             ids[idx], structures_dir, atom_featurizer, bond_featurizer, max_num_neighbors, cutoff,
         )
