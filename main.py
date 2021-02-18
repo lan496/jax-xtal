@@ -4,11 +4,13 @@ import argparse
 from logging import StreamHandler, DEBUG, Formatter, FileHandler, getLogger
 from typing import Mapping, Any, Tuple
 from time import time
+import contextlib
 
 import haiku as hk
 import jax
 import jax.numpy as jnp
 import optax
+from joblib import Parallel, delayed
 
 from jax_xtal.data import (
     AtomFeaturizer,
@@ -30,6 +32,14 @@ from jax_xtal.train_utils import (
 from jax_xtal.config import load_config, Config
 
 OptState = Any
+
+
+@contextlib.contextmanager
+def timer(logger, name):
+    lap = time()
+    yield
+    elapsed = time() - lap
+    logger.debug(f"{name}: {elapsed:.2f}s")
 
 
 def get_module_logger(modname, log_path):
@@ -119,19 +129,19 @@ def main(config: Config):
 
     # Loss function
     @jax.jit
-    def loss_fn(params: hk.Params, state: hk.State, batch: Batch) -> Tuple[jnp.ndarray, hk.State]:
+    def loss_fn(
+        params: hk.Params, state: hk.State, batch: Batch
+    ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, hk.State]]:
         predictions, state = model.apply(params, state, batch, True)  # train=True
         predictions = jnp.squeeze(predictions, axis=-1)
 
         mse = mean_squared_error(predictions, batch["target"])
         weight_l2 = 0.5 * sum([jnp.sum(jnp.square(x)) for x in jax.tree_leaves(params)])
-        return mse + config.l2_reg * weight_l2, state
+        return mse + config.l2_reg * weight_l2, (predictions, state)
 
     # Evaluate metrics
     @jax.jit
-    def compute_metrics(params: hk.Params, state: hk.Params, batch: Batch) -> Metrics:
-        predictions, _ = model.apply(params, state, batch, is_training=False)
-        predictions = jnp.squeeze(predictions, axis=-1)
+    def compute_metrics(predictions: jnp.ndarray, batch: Batch) -> Metrics:
         mse = mean_squared_error(predictions, batch["target"])
         mae = mean_absolute_error(predictions, batch["target"])
         metrics = {
@@ -144,11 +154,23 @@ def main(config: Config):
     @jax.jit
     def update(
         params: hk.Params, state: hk.State, opt_state: OptState, batch: Batch
-    ) -> Tuple[hk.Params, hk.State, OptState, jnp.float32]:
-        (loss, state), grads = jax.value_and_grad(loss_fn, has_aux=True)(params, state, batch)
+    ) -> Tuple[hk.Params, hk.State, OptState, Metrics]:
+        (_loss, (predictions, state)), grads = jax.value_and_grad(loss_fn, has_aux=True)(
+            params, state, batch
+        )
         updates, opt_state = optimizer.update(grads, opt_state)
         params = optax.apply_updates(params, updates)
-        return params, state, opt_state, loss
+        metrics = compute_metrics(predictions, batch)
+        return params, state, opt_state, metrics
+
+    @jax.jit
+    def eval_one_step(
+        params: hk.Params, state: hk.State, batch: Batch
+    ) -> Tuple[jnp.ndarray, Metrics]:
+        predictions, state = model.apply(params, state, batch, False)  # train=False
+        predictions = jnp.squeeze(predictions, axis=-1)
+        metrics = compute_metrics(predictions, batch)
+        return predictions, metrics
 
     def train_one_epoch(
         params: hk.Params, state: hk.State, opt_state: OptState, rng_train
@@ -161,13 +183,18 @@ def main(config: Config):
         perms = perms[: steps_per_epoch * batch_size]  # skip incomplete batch
         perms = perms.reshape((steps_per_epoch, batch_size))
 
+        # Prepare batches
+        with timer(logger, "prepare batches"):
+            batches = Parallel(n_jobs=config.n_jobs)(
+                delayed(collate_pool)([train_dataset[idx] for idx in perm], True) for perm in perms
+            )
+
         train_metrics = []
 
         lap = time()
-        for i, perm in enumerate(perms):
-            batch = collate_pool([train_dataset[idx] for idx in perm], True)  # train=True
-            params, state, opt_state, _ = update(params, state, opt_state, batch)
-            metrics = compute_metrics(params, state, batch)
+        for i, batch in enumerate(batches):
+            with timer(logger, f"update_{i}"):
+                params, state, opt_state, metrics = update(params, state, opt_state, batch)
             train_metrics.append(metrics)
 
             time_step = time() - lap
@@ -175,10 +202,6 @@ def main(config: Config):
             logger.debug(
                 f"Epoch [{epoch}][{i + 1}/{steps_per_epoch}]: Loss={metrics['mse']:.4f}, MAE={normalizer.denormalize_MAE(metrics['mae']):.4f}, Time={time_step:.2f} sec/step"
             )
-            if (i + 1) % config.print_freq == 0:
-                logger.info(
-                    f"Epoch [{epoch}][{i + 1}/{steps_per_epoch}]: Loss={metrics['mse']:.4f}, Time={time_step:.2f} sec/step"
-                )
 
         train_summary = get_metrics_mean(train_metrics)
         return params, state, opt_state, train_summary
@@ -187,11 +210,28 @@ def main(config: Config):
         batch_size = config.batch_size_prediction
         eval_metrics = []
         steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
-        for i in range(steps_per_epoch):
-            batch = collate_pool(
-                dataset[i * batch_size : (i + 1) * batch_size], True
-            )  # train=True to get batch['target']
-            metrics = compute_metrics(params, state, batch)
+
+        # Prepare batches
+        with timer(logger, "prepare batches for validation"):
+            # train=True to get batch['target']
+            batches = Parallel(n_jobs=config.n_jobs)(
+                [
+                    delayed(collate_pool)(
+                        [
+                            dataset[ii]
+                            for ii in range(
+                                i * batch_size, min(len(dataset), (i + 1) * batch_size)
+                            )
+                        ],
+                        True,
+                    )
+                    for i in range(steps_per_epoch)
+                ]
+            )
+
+        for i, batch in enumerate(batches):
+            with timer(logger, f"eval_{i}"):
+                _predictions, metrics = eval_one_step(params, state, batch)
             eval_metrics.append(metrics)
         eval_summary = get_metrics_mean(eval_metrics)
         return eval_summary

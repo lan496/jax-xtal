@@ -5,8 +5,6 @@ from typing import List, Mapping, Any
 from logging import getLogger
 from functools import partial
 
-import jax
-import jax.numpy as jnp
 from joblib import Parallel, delayed
 import numpy as np
 import pandas as pd
@@ -288,17 +286,17 @@ def collate_pool(samples, train=True) -> Batch:
             batch_targets.append(data["target"])
 
         num_atoms_i = data["atom_features"].shape[0]
-        atom_indices.append(jnp.arange(num_atoms_i) + index_offset)
+        atom_indices.append(np.arange(num_atoms_i) + index_offset)
 
         index_offset += num_atoms_i
 
     batch_data = {
-        "neighbor_indices": jnp.concatenate(batch_neighbor_indices, axis=0).astype(jnp.int32),
-        "atom_features": jnp.concatenate(batch_atom_features, axis=0).astype(jnp.float32),
-        "bond_features": jnp.concatenate(batch_bond_features, axis=0).astype(jnp.float32),
+        "neighbor_indices": np.concatenate(batch_neighbor_indices, axis=0).astype(np.int32),
+        "atom_features": np.concatenate(batch_atom_features, axis=0).astype(np.float32),
+        "bond_features": np.concatenate(batch_bond_features, axis=0).astype(np.float32),
         "atom_indices": atom_indices,
     }
     if train:
-        batch_data["target"] = jnp.array(batch_targets)[:, None]
+        batch_data["target"] = np.array(batch_targets)[:, None]
 
     return batch_data

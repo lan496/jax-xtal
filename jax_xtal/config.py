@@ -24,7 +24,7 @@ class Config:
     # training
     num_epochs: int = 30
     learning_rate: float = 1e-2
-    l2_reg: float = 1e-8
+    l2_reg: float = 0.0
     batch_size: int = 256
     train_ratio: float = 0.6
     val_ratio: float = 0.2
