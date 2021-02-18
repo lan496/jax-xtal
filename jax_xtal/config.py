@@ -21,15 +21,16 @@ class Config:
     num_convs: int = 2
     num_hidden_layers: int = 1
     num_hidden_features: int = 128
-    # dataloader
-    batch_size: int = 256
     # training
     num_epochs: int = 30
     learning_rate: float = 1e-5
     l2_reg: float = 1e-8
+    batch_size: int = 256
     train_ratio: float = 0.6
     val_ratio: float = 0.2
     test_ratio: float = 0.2
+    # prediction
+    batch_size_prediction: int = 1024
     # preprocessing
     atom_init_features_path: str = DEFAULT_ATOM_INIT_FEATURES_PATH
     cutoff: float = 6.0

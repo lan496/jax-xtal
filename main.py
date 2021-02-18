@@ -184,7 +184,7 @@ def main(config: Config):
         return params, state, opt_state, train_summary
 
     def eval_model(params: hk.Params, state: hk.State, dataset) -> Metrics:
-        batch_size = config.batch_size  # TODO: use larger batch size for prediction
+        batch_size = config.batch_size_prediction
         eval_metrics = []
         steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
         for i in range(steps_per_epoch):

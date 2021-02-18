@@ -55,7 +55,7 @@ def main(config: Config, ckpt_path: str, structures_dir: str, output: str):
         return predictions
 
     # Prediction
-    batch_size = config.batch_size
+    batch_size = config.batch_size_prediction
     steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
     predictions = []
     for i in range(steps_per_epoch):
