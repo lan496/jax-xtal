@@ -23,7 +23,7 @@ class Config:
     num_hidden_features: int = 128
     # training
     num_epochs: int = 30
-    learning_rate: float = 1e-5
+    learning_rate: float = 1e-2
     l2_reg: float = 1e-8
     batch_size: int = 256
     train_ratio: float = 0.6

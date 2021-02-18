@@ -172,6 +172,9 @@ def main(config: Config):
 
             time_step = time() - lap
             lap = time()
+            logger.debug(
+                f"Epoch [{epoch}][{i + 1}/{steps_per_epoch}]: Loss={metrics['mse']:.4f}, MAE={normalizer.denormalize_MAE(metrics['mae']):.4f}, Time={time_step:.2f} sec/step"
+            )
             if (i + 1) % config.print_freq == 0:
                 logger.info(
                     f"Epoch [{epoch}][{i + 1}/{steps_per_epoch}]: Loss={metrics['mse']:.4f}, Time={time_step:.2f} sec/step"
