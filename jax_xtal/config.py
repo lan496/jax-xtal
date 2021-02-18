@@ -26,7 +26,6 @@ class Config:
     # training
     num_epochs: int = 30
     learning_rate: float = 1e-5
-    milestones: int = 100
     l2_reg: float = 1e-8
     train_ratio: float = 0.6
     val_ratio: float = 0.2
@@ -40,8 +39,6 @@ class Config:
     max_num_neighbors: int = 12
     # misc
     print_freq: int = 10
-    num_workers: int = 1
-    pin_memory: bool = False
     checkpoint_dir: str = "checkpoints"
     log_dir: str = "log"
     seed: int = 0
