@@ -43,9 +43,10 @@ ARG JAX_VERSION=0.2.9
 ARG JAXLIB_VERSION=0.1.59+cuda111
 RUN python -m pip install --upgrade jax==${JAX_VERSION} jaxlib==${JAXLIB_VERSION} -f https://storage.googleapis.com/jax-releases/jax_releases.html
 
-# install pymatgen, and others
+# install pymatgen and others
 RUN python -m pip install pymatgen==2020.12.31
-RUN python -m pip install flax numpy dataclasses-json tqdm joblib
+RUN python -m pip install numpy dataclasses-json tqdm joblib optax
+RUN python -m pip install git+https://github.com/deepmind/dm-haiku
 
 RUN mkdir /workspace
 ENTRYPOINT ["/bin/bash"]

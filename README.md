@@ -5,20 +5,22 @@ jax/flax implementation of [Crystal Graph Convolutional Neural Networks (CGCNN)]
 - CuDNN 8
 - jax 0.2.9
 - jaxlib 0.1.59
-- flax 0.3.0
+- haiku 0.0.4.dev0
 - python 3.8
-- Ubuntu 18.04
 
 ## Installation
 
 ### Docker
-```script
+```shell
 docker build -t jax-xtal -f docker/Dockerfile .
 docker run -it --gpus all -v $(pwd):/workspace --name jax-xtal jax-xtal
 docker attach jax-xtal
 ```
 
 ### local
+```shell
+python -m pip install -r requirements.txt
+```
 
 ## Usage
 
