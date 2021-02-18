@@ -3,8 +3,10 @@ from typing import Any
 from time import time
 from logging import getLogger
 from functools import partial
-from typing import Mapping, List
+from typing import Mapping, List, Tuple
+import pickle
 
+import haiku as hk
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -100,17 +102,17 @@ def compute_metrics(predictions, targets):
 #     return predictions
 
 
-# def save_checkpoint(state: TrainState, workdir: str):
-#     step = state.step
-#     ckpt_path = os.path.join(workdir, f"checkpoint_{step}.flax")
-#     with open(ckpt_path, "wb") as f:
-#         f.write(serialization.to_bytes(state))
+def save_checkpoint(params: hk.Params, state: hk.State, normalizer: Normalizer, workdir: str):
+    ckpt_path = os.path.join(workdir, f"checkpoint.pkl")
+    with open(ckpt_path, "wb") as f:
+        pickle.dump((params, state, normalizer.mean, normalizer.std), f)
 
 
-# def restore_checkpoint(ckpt_path: str, state: TrainState) -> TrainState:
-#     with open(ckpt_path, "rb") as f:
-#         restored_state = serialization.from_bytes(state, f.read())
-#     return restored_state
+def restore_checkpoint(ckpt_path: str) -> Tuple[hk.Params, hk.State, Normalizer]:
+    with open(ckpt_path, "rb") as f:
+        params, state, mean, std = pickle.load(f)
+    normalizer = Normalizer(mean, std)
+    return params, state, normalizer
 
 
 def get_metrics_mean(list_metrics: List[Metrics]) -> Metrics:

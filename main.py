@@ -25,6 +25,7 @@ from jax_xtal.train_utils import (
     Normalizer,
     Metrics,
     get_metrics_mean,
+    save_checkpoint,
 )
 from jax_xtal.config import load_config, Config
 
@@ -218,14 +219,10 @@ def main(config: Config):
     test_mae = normalizer.denormalize_MAE(test_summary["mae"])
     logger.info("[Test] loss: %.2f, MAE: %.2f eV/atom" % (test_loss, test_mae))
 
-    """
-    # TODO: checkpoint
-    root_dir = os.path.dirname(__file__)
     logger.info("Save checkpoint")
     workdir = config.checkpoint_dir
     os.makedirs(workdir, exist_ok=True)
-    save_checkpoint(state, workdir)
-    """
+    save_checkpoint(params, state, normalizer, workdir)
 
 
 if __name__ == "__main__":
