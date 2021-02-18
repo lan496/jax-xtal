@@ -21,6 +21,8 @@ class CGConv(hk.Module):
         self._max_num_neighbors = max_num_neighbors
 
         self._cgweight = Linear(2 * self._num_atom_features, name="cgweight")
+        self._bn1 = BatchNorm(False, False, 0.9, name="bn_1")
+        self._bn2 = BatchNorm(False, False, 0.9, name="bn_2")
 
     def __call__(
         self,
@@ -51,12 +53,8 @@ class CGConv(hk.Module):
             axis=2,
         )
         total_gated_features = self._cgweight(total_neighbor_features)
-        total_gated_features = BatchNorm(
-            create_scale=True, create_offset=True, decay_rate=1.0, name="bn_1"
-        )(
-            total_gated_features.reshape(-1, 2 * self._num_atom_features),
-            is_training=train,
-            test_local_stats=True,
+        total_gated_features = self._bn1(
+            total_gated_features.reshape(-1, 2 * self._num_atom_features), is_training=train,
         ).reshape(
             num_atoms_batch, self._max_num_neighbors, 2 * self._num_atom_features
         )  # TODO: why reshape here?
@@ -68,9 +66,7 @@ class CGConv(hk.Module):
         neighbor_summed = jnp.sum(
             neighbor_filter * neighbor_core, axis=1
         )  # (N, num_atom_features)
-        neighbor_summed = BatchNorm(
-            create_scale=True, create_offset=True, decay_rate=1.0, name="bn_2"
-        )(neighbor_summed, is_training=train, test_local_stats=True)
+        neighbor_summed = self._bn2(neighbor_summed, is_training=train)
         out = jax.nn.softplus(atom_features + neighbor_summed)  # TODO: defer from Eq. (5) ?
         return out
 
