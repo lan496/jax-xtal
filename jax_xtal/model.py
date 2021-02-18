@@ -20,6 +20,8 @@ class CGConv(hk.Module):
         self._num_atom_features = num_atom_features
         self._max_num_neighbors = max_num_neighbors
 
+        self._cgweight = Linear(2 * self._num_atom_features, name="cgweight")
+
     def __call__(
         self,
         neighbor_indices: jnp.ndarray,
@@ -48,9 +50,7 @@ class CGConv(hk.Module):
             ],
             axis=2,
         )
-        total_gated_features = Linear(2 * self._num_atom_features, name="cgweight")(
-            total_neighbor_features
-        )
+        total_gated_features = self._cgweight(total_neighbor_features)
         total_gated_features = BatchNorm(
             create_scale=True, create_offset=True, decay_rate=1.0, name="bn_1"
         )(
@@ -122,6 +122,18 @@ class CGCNN(hk.Module):
         self._num_hidden_features = num_hidden_features
         self._max_num_neighbors = max_num_neighbors
 
+        self._embedding = Linear(self._num_atom_features, name="embedding")
+        self._cgconvs = [
+            CGConv(self._num_atom_features, self._max_num_neighbors, name=f"cgconv_{i}")
+            for i in range(self._num_convs)
+        ]
+        self._cgpooling = CGPooling(name="cgpooling")
+        self._fcs = [
+            Linear(self._num_hidden_features, name=f"fc_{i}")
+            for i in range(self._num_hidden_layers)
+        ]
+        self._fc_last = Linear(1, name="fc_last")
+
     def __call__(
         self,
         neighbor_indices: jnp.ndarray,
@@ -130,18 +142,16 @@ class CGCNN(hk.Module):
         atom_indices: jnp.ndarray,
         train: bool = True,
     ):
-        atom_features = Linear(self._num_atom_features, name="embedding")(atom_features)
+        atom_features = self._embedding(atom_features)
         for i in range(self._num_convs):
-            atom_features = CGConv(
-                self._num_atom_features, self._max_num_neighbors, name=f"cgconv_{i}"
-            )(neighbor_indices, atom_features, bond_features, train)
+            atom_features = self._cgconvs[i](neighbor_indices, atom_features, bond_features, train)
 
-        crystal_features = CGPooling(name="cgpooling")(atom_features, atom_indices)
+        crystal_features = self._cgpooling(atom_features, atom_indices)
         crystal_features = jax.nn.softplus(crystal_features)
         for i in range(self._num_hidden_layers):
-            crystal_features = Linear(self._num_hidden_features, name=f"fc_{i}")(crystal_features)
+            crystal_features = self._fcs[i](crystal_features)
             crystal_features = jax.nn.softplus(crystal_features)
-        out = Linear(1, name="fc_last")(crystal_features)
+        out = self._fc_last(crystal_features)
         return out
 
 

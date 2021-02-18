@@ -1,10 +1,11 @@
 {
     "structures_dir": "data/structures_dummy",
     "targets_csv_path": "data/targets_dummy.csv",
-    "num_atom_features": 2,
-    "num_convs": 1,
-    "num_hidden_features": 2,
-    "num_epochs": 10,
+    "num_atom_features": 3,
+    "num_convs": 2,
+    "num_hidden_layers": 5,
+    "num_hidden_features": 7,
+    "num_epochs": 2,
     "print_freq": 1,
     "batch_size": 2
 }
