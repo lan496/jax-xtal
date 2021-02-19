@@ -29,7 +29,7 @@ class CGConv(hk.Module):
         neighbor_indices: jnp.ndarray,
         atom_features: jnp.ndarray,
         bond_features: jnp.ndarray,
-        is_training: bool = True,
+        is_training: bool,
     ):
         """
         Let the total number of atoms in the batch be N,
@@ -136,7 +136,7 @@ class CGCNN(hk.Module):
         atom_features: jnp.ndarray,
         bond_features: jnp.ndarray,
         atom_indices: jnp.ndarray,
-        is_training: bool = True,
+        is_training: bool,
     ):
         atom_features = self._embedding(atom_features)
         for i in range(self._num_convs):
@@ -162,7 +162,12 @@ def get_model_fn_t(
 ):
     def model_fn(batch: Batch, is_training: bool) -> jnp.ndarray:
         model = CGCNN(
-            num_atom_features, num_convs, num_hidden_layers, num_hidden_features, max_num_neighbors
+            num_atom_features,
+            num_convs,
+            num_hidden_layers,
+            num_hidden_features,
+            max_num_neighbors,
+            name="cgcnn",
         )
         neighbor_indices = batch["neighbor_indices"]
         atom_features = batch["atom_features"]

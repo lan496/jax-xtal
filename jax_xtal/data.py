@@ -253,7 +253,7 @@ def split_dataset(dataset, train_ratio=0.6, val_ratio=0.2, test_ratio=0.2):
     return train_dataset, val_dataset, test_dataset
 
 
-def collate_pool(samples, train=True) -> Batch:
+def collate_pool(samples, have_targets: bool) -> Batch:
     """
     relabel atoms in a batch
 
@@ -282,7 +282,7 @@ def collate_pool(samples, train=True) -> Batch:
         batch_atom_features.append(data["atom_features"])
         batch_bond_features.append(data["bond_features"])
         batch_neighbor_indices.append(data["neighbor_indices"] + index_offset)
-        if train:
+        if have_targets:
             batch_targets.append(data["target"])
 
         num_atoms_i = data["atom_features"].shape[0]
@@ -296,7 +296,7 @@ def collate_pool(samples, train=True) -> Batch:
         "bond_features": np.concatenate(batch_bond_features, axis=0).astype(np.float32),
         "atom_indices": atom_indices,
     }
-    if train:
+    if have_targets:
         batch_data["target"] = np.array(batch_targets)[:, None]
 
     return batch_data

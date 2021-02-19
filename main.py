@@ -97,7 +97,7 @@ def main(config: Config):
     del dataset
 
     # Normalize target value
-    num_norm_samples = min(1000, len(train_dataset))
+    num_norm_samples = min(500, len(train_dataset))
     normalizer = Normalizer.from_targets(
         [train_dataset[idx]["target"] for idx in range(num_norm_samples)]
     )
@@ -119,7 +119,7 @@ def main(config: Config):
 
     # Initialize model and optimizer
     logger.info("Initialize model and optimizer")
-    init_batch = collate_pool(train_dataset[:2], False)
+    init_batch = collate_pool(train_dataset[:2], have_targets=True)
     rng, init_rng = jax.random.split(rng)
     params, state = model.init(init_rng, init_batch, is_training=True)
     opt_state = optimizer.init(params)
@@ -132,7 +132,7 @@ def main(config: Config):
     def loss_fn(
         params: hk.Params, state: hk.State, batch: Batch
     ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, hk.State]]:
-        predictions, state = model.apply(params, state, batch, True)  # train=True
+        predictions, state = model.apply(params, state, batch, True)  # is_training=True
         predictions = jnp.squeeze(predictions, axis=-1)
 
         mse = mean_squared_error(predictions, batch["target"])
@@ -167,7 +167,7 @@ def main(config: Config):
     def eval_one_step(
         params: hk.Params, state: hk.State, batch: Batch
     ) -> Tuple[jnp.ndarray, Metrics]:
-        predictions, state = model.apply(params, state, batch, False)  # train=False
+        predictions, state = model.apply(params, state, batch, False)  # is_training=False
         predictions = jnp.squeeze(predictions, axis=-1)
         metrics = compute_metrics(predictions, batch)
         return predictions, metrics
