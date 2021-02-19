@@ -97,7 +97,7 @@ def main(config: Config):
     del dataset
 
     # Normalize target value
-    num_norm_samples = min(500, len(train_dataset))
+    num_norm_samples = min(1000, len(train_dataset))
     normalizer = Normalizer.from_targets(
         [train_dataset[idx]["target"] for idx in range(num_norm_samples)]
     )
@@ -184,17 +184,15 @@ def main(config: Config):
         perms = perms.reshape((steps_per_epoch, batch_size))
 
         # Prepare batches
-        with timer(logger, "prepare batches"):
-            batches = Parallel(n_jobs=config.n_jobs)(
-                delayed(collate_pool)([train_dataset[idx] for idx in perm], True) for perm in perms
-            )
+        batches = Parallel(n_jobs=config.n_jobs)(
+            delayed(collate_pool)([train_dataset[idx] for idx in perm], True) for perm in perms
+        )
 
         train_metrics = []
 
         lap = time()
         for i, batch in enumerate(batches):
-            with timer(logger, f"update_{i}"):
-                params, state, opt_state, metrics = update(params, state, opt_state, batch)
+            params, state, opt_state, metrics = update(params, state, opt_state, batch)
             train_metrics.append(metrics)
 
             time_step = time() - lap
@@ -212,26 +210,22 @@ def main(config: Config):
         steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
 
         # Prepare batches
-        with timer(logger, "prepare batches for validation"):
-            # train=True to get batch['target']
-            batches = Parallel(n_jobs=config.n_jobs)(
-                [
-                    delayed(collate_pool)(
-                        [
-                            dataset[ii]
-                            for ii in range(
-                                i * batch_size, min(len(dataset), (i + 1) * batch_size)
-                            )
-                        ],
-                        True,
-                    )
-                    for i in range(steps_per_epoch)
-                ]
-            )
+        # train=True to get batch['target']
+        batches = Parallel(n_jobs=config.n_jobs)(
+            [
+                delayed(collate_pool)(
+                    [
+                        dataset[ii]
+                        for ii in range(i * batch_size, min(len(dataset), (i + 1) * batch_size))
+                    ],
+                    True,
+                )
+                for i in range(steps_per_epoch)
+            ]
+        )
 
         for i, batch in enumerate(batches):
-            with timer(logger, f"eval_{i}"):
-                _predictions, metrics = eval_one_step(params, state, batch)
+            _predictions, metrics = eval_one_step(params, state, batch)
             eval_metrics.append(metrics)
         eval_summary = get_metrics_mean(eval_metrics)
         return eval_summary
