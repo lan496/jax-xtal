@@ -1,0 +1,11 @@
+{
+    "structures_dir": "data/structures",
+    "targets_csv_path": "data/formation_energy_per_atom.csv",
+    "train_ratio": 0.6,
+    "val_ratio": 0.2,
+    "test_ratio": 0.2,
+    "cutoff": 5.2,
+    "dmin": 0.2,
+    "num_bond_features": 11,
+    "n_jobs": 10
+}
