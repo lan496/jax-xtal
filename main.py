@@ -4,8 +4,9 @@ import argparse
 from logging import StreamHandler, DEBUG, Formatter, FileHandler, getLogger
 from typing import Mapping, Any, Tuple
 from time import time
-import contextlib
+import random
 
+import numpy as np
 import haiku as hk
 import jax
 import jax.numpy as jnp
@@ -34,12 +35,10 @@ from jax_xtal.config import load_config, Config
 OptState = Any
 
 
-@contextlib.contextmanager
-def timer(logger, name):
-    lap = time()
-    yield
-    elapsed = time() - lap
-    logger.debug(f"{name}: {elapsed:.2f}s")
+def seed_everything(seed: int):
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    np.random.seed(seed)
 
 
 def get_module_logger(modname, log_path):
@@ -70,6 +69,7 @@ def main(config: Config):
     logger = get_module_logger("cgcnn", log_path)
 
     seed = config.seed
+    seed_everything(seed)
     rng_seq = hk.PRNGSequence(seed)
 
     # Prepare dataset
@@ -89,19 +89,6 @@ def main(config: Config):
         seed=seed,
         n_jobs=config.n_jobs,
     )
-
-    """
-    # debug
-    sample = dataset[12533]
-    import numpy as np
-    with open('atom_feature.jax.npy', 'wb') as f:
-        np.save(f, sample['atom_features'])
-    with open('bond_feature.jax.npy', 'wb') as f:
-        np.save(f, sample['bond_features'])
-    with open('neighbor_indices.jax.npy', 'wb') as f:
-        np.save(f, sample['neighbor_indices'])
-    import pdb; pdb.set_trace()
-    """
 
     train_dataset, val_dataset, test_dataset = split_dataset(
         dataset,
@@ -149,7 +136,6 @@ def main(config: Config):
         params: hk.Params, state: hk.State, batch: Batch
     ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, hk.State]]:
         predictions, state = model.apply(params, state, batch, True)  # is_training=True
-        predictions = jnp.squeeze(predictions, axis=1)
 
         mse = mean_squared_error(predictions, batch["target"])
         return mse, (predictions, state)
@@ -183,7 +169,6 @@ def main(config: Config):
         params: hk.Params, state: hk.State, batch: Batch
     ) -> Tuple[jnp.ndarray, Metrics]:
         predictions, state = model.apply(params, state, batch, False)  # is_training=False
-        predictions = jnp.squeeze(predictions, axis=1)
         metrics = compute_metrics(predictions, batch)
         return predictions, metrics
 

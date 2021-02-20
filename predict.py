@@ -37,7 +37,9 @@ def main(config: Config, ckpt_path: str, structures_dir: str, output: str):
 
     # Define model
     model_fn_t = get_model_fn_t(
+        num_initial_atom_features=atom_featurizer.num_initial_atom_features,
         num_atom_features=config.num_atom_features,
+        num_bond_features=config.num_bond_features,
         num_convs=config.num_convs,
         num_hidden_layers=config.num_hidden_layers,
         num_hidden_features=config.num_hidden_features,
@@ -51,7 +53,6 @@ def main(config: Config, ckpt_path: str, structures_dir: str, output: str):
     @jax.jit
     def predict_one_step(batch: Batch) -> jnp.ndarray:
         predictions, _ = model.apply(params, state, batch, is_training=False)
-        predictions = jnp.squeeze(predictions, axis=-1)
         return predictions
 
     # Prediction
@@ -62,14 +63,14 @@ def main(config: Config, ckpt_path: str, structures_dir: str, output: str):
         batch = collate_pool(dataset, False)  # train=False
         preds = predict_one_step(batch)
         predictions.append(preds)
-    predictions = jnp.concatenate(predictions)  # (len(dataset), )
+    predictions = jnp.concatenate(predictions)  # (len(dataset), 1)
 
     # denormalize predictions
     denormed_preds = normalizer.denormalize(predictions)
 
     with open(args.output, "w") as f:
         for i, idx in enumerate(list_ids):
-            f.write(f"{idx},{denormed_preds[i]}\n")
+            f.write(f"{idx},{denormed_preds[i, 0]}\n")
 
 
 if __name__ == "__main__":
