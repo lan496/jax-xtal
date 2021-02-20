@@ -85,9 +85,24 @@ def main(config: Config):
         targets_csv_path=config.targets_csv_path,
         max_num_neighbors=config.max_num_neighbors,
         cutoff=config.cutoff,
+        is_training=True,
         seed=seed,
         n_jobs=config.n_jobs,
     )
+
+    """
+    # debug
+    sample = dataset[12533]
+    import numpy as np
+    with open('atom_feature.jax.npy', 'wb') as f:
+        np.save(f, sample['atom_features'])
+    with open('bond_feature.jax.npy', 'wb') as f:
+        np.save(f, sample['bond_features'])
+    with open('neighbor_indices.jax.npy', 'wb') as f:
+        np.save(f, sample['neighbor_indices'])
+    import pdb; pdb.set_trace()
+    """
+
     train_dataset, val_dataset, test_dataset = split_dataset(
         dataset,
         train_ratio=config.train_ratio,
@@ -125,6 +140,9 @@ def main(config: Config):
     num_params = hk.data_structures.tree_size(params)
     byte_size = hk.data_structures.tree_bytes(params)  # size with f32
     logger.info(f"{num_params} params, size={byte_size/1e6:.2f}MB")
+    import pdb
+
+    pdb.set_trace()
 
     # Loss function
     @jax.jit
@@ -244,7 +262,7 @@ def main(config: Config):
         logger.info(
             "[Eval] epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, val_loss, val_mae)
         )
-        jax.profiler.save_device_memory_profile(f"memory{epoch}.prof")
+        # jax.profiler.save_device_memory_profile(f"memory{epoch}.prof")
 
     test_summary = eval_model(params, state, test_dataset)
     test_loss = test_summary["mse"]

@@ -21,8 +21,8 @@ class CGConv(hk.Module):
         self._max_num_neighbors = max_num_neighbors
 
         self._cgweight = Linear(2 * self._num_atom_features, name="cgweight")
-        self._bn1 = BatchNorm(False, False, 0.9, name="bn_1")
-        self._bn2 = BatchNorm(False, False, 0.9, name="bn_2")
+        self._bn1 = BatchNorm(True, True, 0.9, name="bn_1")
+        self._bn2 = BatchNorm(True, True, 0.9, name="bn_2")
 
     def __call__(
         self,
@@ -54,7 +54,8 @@ class CGConv(hk.Module):
         )
         total_gated_features = self._cgweight(total_neighbor_features)
         total_gated_features = self._bn1(
-            total_gated_features.reshape(-1, 2 * self._num_atom_features), is_training=is_training,
+            total_gated_features.reshape(-1, 2 * self._num_atom_features),
+            is_training=is_training,
         ).reshape(
             num_atoms_batch, self._max_num_neighbors, 2 * self._num_atom_features
         )  # TODO: why reshape here?

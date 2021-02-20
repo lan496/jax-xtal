@@ -24,6 +24,7 @@ def test_cgcnn_forward():
         targets_csv_path=os.path.join(root_dir, "data", "targets_dummy.csv"),
         max_num_neighbors=max_num_neighbors,
         cutoff=6.0,
+        is_training=True,
     )
 
     rng = jax.random.PRNGKey(0)

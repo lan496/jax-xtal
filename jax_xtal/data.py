@@ -51,7 +51,7 @@ class AtomFeaturizer:
         atom_features: (structure.num_sites, self.num_atom_features)
         """
         atom_features = np.array([self._get_atom_feature(site.specie.Z) for site in structure])
-        return atom_features
+        return atom_features.astype(np.float32)
 
 
 class BondFeaturizer:
@@ -75,7 +75,7 @@ class BondFeaturizer:
         self._filter = np.linspace(dmin, dmax, num_filters, endpoint=True)
 
         if blur is None:
-            self._blur = (dmax - dmin) / num_filters
+            self._blur = (dmax - dmin) / (num_filters - 1)
         else:
             self._blur = blur
 
@@ -85,7 +85,9 @@ class BondFeaturizer:
 
     def _expand_by_basis(self, distances):
         # (max_num_neighbors, num_bond_features) is returned
-        return np.exp(-(((distances[:, None] - self._filter[None, :]) / self._blur) ** 2))
+        return np.exp(
+            -np.square(distances[:, None] - self._filter[None, :]) / np.square(self._blur)
+        )
 
     def __call__(self, all_neighbors: List[List[PeriodicSite]], max_num_neighbors: int):
         """
@@ -128,10 +130,10 @@ def create_dataset(
     atom_featurizer: AtomFeaturizer,
     bond_featurizer: BondFeaturizer,
     structures_dir: str,
+    max_num_neighbors: int,
+    cutoff: float,
+    is_training: bool,
     targets_csv_path: str = "",
-    is_training: bool = True,
-    max_num_neighbors: int = 12,
-    cutoff: float = 6.0,
     seed=0,
     n_jobs=1,
 ):
@@ -221,6 +223,7 @@ def _create_inputs(
 
     # Padding neighbors might cause artificial effect, see https://github.com/txie-93/cgcnn/pull/16
     neighbors = structure.get_all_neighbors(r=cutoff)
+    neighbors = [sorted(nn, key=lambda n: n.nn_distance) for nn in neighbors]  # sort by distances
     bond_features, neighbor_indices = bond_featurizer(neighbors, max_num_neighbors)
 
     inputs = {
