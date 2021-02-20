@@ -6,6 +6,5 @@
     "num_hidden_layers": 5,
     "num_hidden_features": 7,
     "num_epochs": 2,
-    "print_freq": 1,
     "batch_size": 2
 }

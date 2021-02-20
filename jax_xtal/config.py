@@ -18,28 +18,25 @@ class Config:
     targets_csv_path: str
     # model
     num_atom_features: int = 64
-    num_convs: int = 2
+    num_convs: int = 3
     num_hidden_layers: int = 1
     num_hidden_features: int = 128
     # training
     num_epochs: int = 30
     learning_rate: float = 1e-2
-    l2_reg: float = 0.0
     batch_size: int = 256
-    train_ratio: float = 0.6
-    val_ratio: float = 0.2
-    test_ratio: float = 0.2
+    train_ratio: float = 0.8
+    val_ratio: float = 0.1
+    test_ratio: float = 0.1
     # prediction
     batch_size_prediction: int = 1024
     # preprocessing
     atom_init_features_path: str = DEFAULT_ATOM_INIT_FEATURES_PATH
-    cutoff: float = 6.0
-    dmin: float = 0.7
-    dmax: float = 5.2
-    num_bond_features: int = 10
+    cutoff: float = 8.0
+    dmin: float = 0.0
+    num_bond_features: int = 41
     max_num_neighbors: int = 12
     # misc
-    print_freq: int = 10
     checkpoint_dir: str = "checkpoints"
     log_dir: str = "log"
     seed: int = 0

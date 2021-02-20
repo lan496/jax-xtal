@@ -66,7 +66,7 @@ class BondFeaturizer:
     blur: variance of gaussian filters
     """
 
-    def __init__(self, dmin: float = 0.7, dmax: float = 5.2, num_filters: int = 10, blur=None):
+    def __init__(self, dmin: float, dmax: float, num_filters: int, blur=None):
         assert dmin < dmax
         assert num_filters >= 2
         self._dmin = dmin
@@ -189,7 +189,12 @@ def create_dataset(
     logger.info("Preprocessing dataset")
     inputs = Parallel(n_jobs, verbose=1)(
         delayed(_create_inputs)(
-            ids[idx], structures_dir, atom_featurizer, bond_featurizer, max_num_neighbors, cutoff,
+            ids[idx],
+            structures_dir,
+            atom_featurizer,
+            bond_featurizer,
+            max_num_neighbors,
+            cutoff,
         )
         for idx in range(len(ids))
     )

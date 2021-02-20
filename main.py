@@ -70,15 +70,15 @@ def main(config: Config):
     logger = get_module_logger("cgcnn", log_path)
 
     seed = config.seed
-    rng = jax.random.PRNGKey(seed)
+    rng_seq = hk.PRNGSequence(seed)
 
     # Prepare dataset
     logger.info("Load dataset")
     atom_featurizer = AtomFeaturizer(atom_features_json=config.atom_init_features_path)
     bond_featurizer = BondFeaturizer(
-        dmin=config.dmin, dmax=config.dmax, num_filters=config.num_bond_features
+        dmin=config.dmin, dmax=config.cutoff, num_filters=config.num_bond_features
     )
-    dataset, _ = create_dataset(
+    dataset, _ids = create_dataset(
         atom_featurizer=atom_featurizer,
         bond_featurizer=bond_featurizer,
         structures_dir=config.structures_dir,
@@ -120,8 +120,7 @@ def main(config: Config):
     # Initialize model and optimizer
     logger.info("Initialize model and optimizer")
     init_batch = collate_pool(train_dataset[:2], have_targets=True)
-    rng, init_rng = jax.random.split(rng)
-    params, state = model.init(init_rng, init_batch, is_training=True)
+    params, state = model.init(next(rng_seq), init_batch, is_training=True)
     opt_state = optimizer.init(params)
     num_params = hk.data_structures.tree_size(params)
     byte_size = hk.data_structures.tree_bytes(params)  # size with f32
@@ -133,11 +132,10 @@ def main(config: Config):
         params: hk.Params, state: hk.State, batch: Batch
     ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, hk.State]]:
         predictions, state = model.apply(params, state, batch, True)  # is_training=True
-        predictions = jnp.squeeze(predictions, axis=-1)
+        predictions = jnp.squeeze(predictions, axis=1)
 
         mse = mean_squared_error(predictions, batch["target"])
-        weight_l2 = 0.5 * sum([jnp.sum(jnp.square(x)) for x in jax.tree_leaves(params)])
-        return mse + config.l2_reg * weight_l2, (predictions, state)
+        return mse, (predictions, state)
 
     # Evaluate metrics
     @jax.jit
@@ -168,18 +166,18 @@ def main(config: Config):
         params: hk.Params, state: hk.State, batch: Batch
     ) -> Tuple[jnp.ndarray, Metrics]:
         predictions, state = model.apply(params, state, batch, False)  # is_training=False
-        predictions = jnp.squeeze(predictions, axis=-1)
+        predictions = jnp.squeeze(predictions, axis=1)
         metrics = compute_metrics(predictions, batch)
         return predictions, metrics
 
     def train_one_epoch(
-        params: hk.Params, state: hk.State, opt_state: OptState, rng_train
+        params: hk.Params, state: hk.State, opt_state: OptState
     ) -> Tuple[hk.Params, hk.State, OptState, Metrics]:
         # shuffle training data
         batch_size = config.batch_size
         train_size = len(train_dataset)
         steps_per_epoch = train_size // batch_size
-        perms = jax.random.permutation(rng_train, train_size)
+        perms = jax.random.permutation(next(rng_seq), train_size)
         perms = perms[: steps_per_epoch * batch_size]  # skip incomplete batch
         perms = perms.reshape((steps_per_epoch, batch_size))
 
@@ -233,10 +231,7 @@ def main(config: Config):
     # Train/eval loop
     logger.info("Start training")
     for epoch in range(1, config.num_epochs + 1):
-        rng, rng_train = jax.random.split(rng)
-        params, state, opt_state, train_summary = train_one_epoch(
-            params, state, opt_state, rng_train
-        )
+        params, state, opt_state, train_summary = train_one_epoch(params, state, opt_state)
         train_loss = train_summary["mse"]
         train_mae = normalizer.denormalize_MAE(train_summary["mae"])
         logger.info(
