@@ -123,7 +123,9 @@ def main(config: Config):
 
     # Define model and optimizer
     model_fn_t = get_model_fn_t(
+        num_initial_atom_features=atom_featurizer.num_initial_atom_features,
         num_atom_features=config.num_atom_features,
+        num_bond_features=config.num_bond_features,
         num_convs=config.num_convs,
         num_hidden_layers=config.num_hidden_layers,
         num_hidden_features=config.num_hidden_features,
@@ -140,9 +142,6 @@ def main(config: Config):
     num_params = hk.data_structures.tree_size(params)
     byte_size = hk.data_structures.tree_bytes(params)  # size with f32
     logger.info(f"{num_params} params, size={byte_size/1e6:.2f}MB")
-    import pdb
-
-    pdb.set_trace()
 
     # Loss function
     @jax.jit

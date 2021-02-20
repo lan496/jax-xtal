@@ -1,5 +1,6 @@
 from functools import partial
 from typing import Any, Mapping
+import math
 
 import haiku as hk
 from haiku import BatchNorm, Linear
@@ -15,14 +16,30 @@ class CGConv(hk.Module):
     Convolutional layer in Eq. (5)
     """
 
-    def __init__(self, num_atom_features: int, max_num_neighbors: int, name: str = None):
+    def __init__(
+        self,
+        num_atom_features: int,
+        num_bond_features: int,
+        max_num_neighbors: int,
+        name: str = None,
+    ):
         super().__init__(name=name)
         self._num_atom_features = num_atom_features
+        self._num_bond_features = num_bond_features
         self._max_num_neighbors = max_num_neighbors
 
-        self._cgweight = Linear(2 * self._num_atom_features, name="cgweight")
-        self._bn1 = BatchNorm(True, True, 0.9, name="bn_1")
-        self._bn2 = BatchNorm(True, True, 0.9, name="bn_2")
+        in_features_cgweight = 2 * self._num_atom_features + self._num_bond_features
+        stdv_cgweight = 1.0 / math.sqrt(in_features_cgweight)
+        w_init_cgweight = hk.initializers.RandomUniform(-stdv_cgweight, stdv_cgweight)
+        b_init_cgweight = hk.initializers.RandomUniform(-stdv_cgweight, stdv_cgweight)
+        self._cgweight = Linear(
+            2 * self._num_atom_features,
+            w_init=w_init_cgweight,
+            b_init=b_init_cgweight,
+            name="cgweight",
+        )
+        self._bn1 = BatchNorm(True, True, 0.9, name="bn_1")  # momemtum=0.1
+        self._bn2 = BatchNorm(True, True, 0.9, name="bn_2")  # momemtum=0.1
 
     def __call__(
         self,
@@ -105,7 +122,9 @@ class CGCNN(hk.Module):
 
     def __init__(
         self,
+        num_initial_atom_features: int,
         num_atom_features: int,
+        num_bond_features: int,
         num_convs: int,
         num_hidden_layers: int,
         num_hidden_features: int,
@@ -113,23 +132,58 @@ class CGCNN(hk.Module):
         name=None,
     ):
         super().__init__(name=name)
+        self._num_initial_atom_features = num_initial_atom_features
         self._num_atom_features = num_atom_features
+        self._num_bond_features = num_bond_features
         self._num_convs = num_convs
         self._num_hidden_layers = num_hidden_layers
         self._num_hidden_features = num_hidden_features
         self._max_num_neighbors = max_num_neighbors
 
-        self._embedding = Linear(self._num_atom_features, name="embedding")
+        stdv_embedding = 1.0 / math.sqrt(self._num_initial_atom_features)
+        w_init_embedding = hk.initializers.RandomUniform(-stdv_embedding, stdv_embedding)
+        b_init_embedding = hk.initializers.RandomUniform(-stdv_embedding, stdv_embedding)
+        self._embedding = Linear(
+            self._num_atom_features,
+            w_init=w_init_embedding,
+            b_init=b_init_embedding,
+            name="embedding",
+        )
         self._cgconvs = [
-            CGConv(self._num_atom_features, self._max_num_neighbors, name=f"cgconv_{i}")
+            CGConv(
+                num_atom_features=self._num_atom_features,
+                num_bond_features=self._num_bond_features,
+                max_num_neighbors=self._max_num_neighbors,
+                name=f"cgconv_{i}",
+            )
             for i in range(self._num_convs)
         ]
         self._cgpooling = CGPooling(name="cgpooling")
+
+        stdv_fc_first = 1.0 / math.sqrt(self._num_atom_features)
+        w_init_fc_first = hk.initializers.RandomUniform(-stdv_fc_first, stdv_fc_first)
+        b_init_fc_first = hk.initializers.RandomUniform(-stdv_fc_first, stdv_fc_first)
+        stdv_fc_second = 1.0 / math.sqrt(self._num_hidden_features)
+        w_init_fc_second = hk.initializers.RandomUniform(-stdv_fc_second, stdv_fc_second)
+        b_init_fc_second = hk.initializers.RandomUniform(-stdv_fc_second, stdv_fc_second)
         self._fcs = [
-            Linear(self._num_hidden_features, name=f"fc_{i}")
-            for i in range(self._num_hidden_layers)
+            Linear(
+                self._num_hidden_features,
+                w_init=w_init_fc_first,
+                b_init=b_init_fc_first,
+                name="fc_0",
+            )
         ]
-        self._fc_last = Linear(1, name="fc_last")
+        for i in range(1, self._num_hidden_layers):
+            self._fcs.append(
+                Linear(
+                    self._num_hidden_features,
+                    w_init=w_init_fc_second,
+                    b_init=b_init_fc_second,
+                    name=f"fc_{i}",
+                )
+            )
+        self._fc_last = Linear(1, w_init=w_init_fc_second, b_init=b_init_fc_second, name="fc_last")
 
     def __call__(
         self,
@@ -155,7 +209,9 @@ class CGCNN(hk.Module):
 
 
 def get_model_fn_t(
+    num_initial_atom_features: int,
     num_atom_features: int,
+    num_bond_features: int,
     num_convs: int,
     num_hidden_layers: int,
     num_hidden_features: int,
@@ -163,11 +219,13 @@ def get_model_fn_t(
 ):
     def model_fn(batch: Batch, is_training: bool) -> jnp.ndarray:
         model = CGCNN(
-            num_atom_features,
-            num_convs,
-            num_hidden_layers,
-            num_hidden_features,
-            max_num_neighbors,
+            num_initial_atom_features=num_initial_atom_features,
+            num_atom_features=num_atom_features,
+            num_bond_features=num_bond_features,
+            num_convs=num_convs,
+            num_hidden_layers=num_hidden_layers,
+            num_hidden_features=num_hidden_features,
+            max_num_neighbors=max_num_neighbors,
             name="cgcnn",
         )
         neighbor_indices = batch["neighbor_indices"]
