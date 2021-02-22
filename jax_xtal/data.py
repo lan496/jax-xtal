@@ -275,6 +275,7 @@ def collate_pool(samples, have_targets: bool) -> Batch:
         - "neighbor_indices": (N, max_num_neighbors)
         - "atom_features": (N, num_atom_features)
         - "bond_features": (N, max_num_neighbors, num_bond_features)
+        - "num_atoms": (batch_size, )
         - "segment_ids": (N, ): ranges from 0 to len(samples) - 1
         - "target": (batch_size, 1)
         where N is the total number of atoms in the samples
@@ -283,6 +284,7 @@ def collate_pool(samples, have_targets: bool) -> Batch:
     batch_atom_features = []
     batch_bond_features = []
     batch_targets = []
+    batch_num_atoms = []
     segment_ids = []
 
     index_offset = 0
@@ -294,6 +296,7 @@ def collate_pool(samples, have_targets: bool) -> Batch:
             batch_targets.append(data["target"])
 
         num_atoms_i = data["atom_features"].shape[0]
+        batch_num_atoms.append(num_atoms_i)
         segment_ids.extend([i for _ in range(num_atoms_i)])
 
         index_offset += num_atoms_i
@@ -302,6 +305,7 @@ def collate_pool(samples, have_targets: bool) -> Batch:
         "neighbor_indices": np.concatenate(batch_neighbor_indices, axis=0).astype(np.int32),
         "atom_features": np.concatenate(batch_atom_features, axis=0).astype(np.float32),
         "bond_features": np.concatenate(batch_bond_features, axis=0).astype(np.float32),
+        "num_atoms": np.array(batch_num_atoms).astype(np.float32),
         "segment_ids": np.array(segment_ids).astype(np.int32),
     }
     if have_targets:

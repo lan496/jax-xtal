@@ -124,7 +124,11 @@ def main(config: Config):
 
     # Initialize model and optimizer
     logger.info("Initialize model and optimizer")
-    init_batch = collate_pool(train_dataset[:2], have_targets=True)
+    if len(train_dataset) < config.batch_size:
+        raise ValueError(f"Prepare train dataset ({len(train_dataset)}) more than batch_size ({config.batch_size})")
+    if len(val_dataset) < config.batch_size:
+        raise ValueError(f"Prepare validation dataset ({len(val_dataset)}) more than batch_size ({config.batch_size})")
+    init_batch = collate_pool(train_dataset[:config.batch_size], have_targets=True)
     params, state = model.init(next(rng_seq), init_batch, is_training=True)
     opt_state = optimizer.init(params)
     num_params = hk.data_structures.tree_size(params)
@@ -248,7 +252,7 @@ def main(config: Config):
         logger.info(
             "[Eval] epoch: %2d, loss: %.4f, MAE: %.4f eV/atom" % (epoch, val_loss, val_mae)
         )
-        # jax.profiler.save_device_memory_profile(f"memory.{log_basename}.{epoch}.prof")
+        jax.profiler.save_device_memory_profile(f"memory.{log_basename}.{epoch}.prof")
 
     test_summary = eval_model(params, state, test_dataset)
     test_loss = test_summary["mse"]

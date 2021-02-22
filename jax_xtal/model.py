@@ -98,12 +98,13 @@ class CGPooling(hk.Module):
         super().__init__(name=name)
         self._batch_size = batch_size
 
-    def __call__(self, atom_features: jnp.ndarray, segment_ids: jnp.ndarray):
+    def __call__(self, atom_features: jnp.ndarray, segment_ids: jnp.ndarray, num_atoms: jnp.ndarray):
         """
         Parameters
         ----------
         atom_features: (N, num_atom_features)
         segment_ids: (N, )
+        num_atoms: (batch_size, )
 
         Returns
         -------
@@ -117,7 +118,8 @@ class CGPooling(hk.Module):
             num_segments=self._batch_size,
             indices_are_sorted=True,
             unique_indices=False
-        )
+        )  # (batch_size, )
+        averaged_features = averaged_features / num_atoms
         averaged_features = jnp.expand_dims(
             averaged_features,
             axis=1
@@ -202,7 +204,8 @@ class CGCNN(hk.Module):
         neighbor_indices: jnp.ndarray,
         atom_features: jnp.ndarray,
         bond_features: jnp.ndarray,
-        segment_ids: List[jnp.ndarray],
+        num_atoms: jnp.ndarray,
+        segment_ids: jnp.ndarray,
         is_training: bool,
     ):
         atom_features = self._embedding(atom_features)
@@ -211,7 +214,7 @@ class CGCNN(hk.Module):
                 neighbor_indices, atom_features, bond_features, is_training
             )
 
-        crystal_features = self._cgpooling(atom_features, segment_ids)
+        crystal_features = self._cgpooling(atom_features, segment_ids, num_atoms)
         crystal_features = jax.nn.softplus(crystal_features)
 
         for i in range(self._num_hidden_layers):
@@ -246,7 +249,8 @@ def get_model_fn_t(
         neighbor_indices = batch["neighbor_indices"]
         atom_features = batch["atom_features"]
         bond_features = batch["bond_features"]
+        num_atoms = batch['num_atoms']
         segment_ids = batch["segment_ids"]
-        return model(neighbor_indices, atom_features, bond_features, segment_ids, is_training)
+        return model(neighbor_indices, atom_features, bond_features, num_atoms, segment_ids, is_training)
 
     return hk.transform_with_state(model_fn)

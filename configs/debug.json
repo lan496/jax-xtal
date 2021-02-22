@@ -1,6 +1,9 @@
 {
     "structures_dir": "data/structures_dummy",
     "targets_csv_path": "data/targets_dummy.csv",
+    "train_ratio": 0.6,
+    "val_ratio": 0.2,
+    "test_ratio": 0.2,
     "num_atom_features": 3,
     "num_convs": 2,
     "num_hidden_layers": 5,
