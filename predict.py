@@ -21,7 +21,7 @@ def main(config: Config, ckpt_path: str, structures_dir: str, output: str):
     # Prepare test dataset
     atom_featurizer = AtomFeaturizer(atom_features_json=config.atom_init_features_path)
     bond_featurizer = BondFeaturizer(
-        dmin=config.dmin, dmax=config.dmax, num_filters=config.num_bond_features
+        dmin=config.dmin, dmax=config.cutoff, num_filters=config.num_bond_features
     )
     dataset, list_ids = create_dataset(
         atom_featurizer=atom_featurizer,
@@ -57,11 +57,11 @@ def main(config: Config, ckpt_path: str, structures_dir: str, output: str):
         return predictions
 
     # Prediction
-    batch_size = config.batch_size_prediction
+    batch_size = config.batch_size
     steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
     predictions = []
     for i in range(steps_per_epoch):
-        batch = collate_pool(dataset, False)  # train=False
+        batch = collate_pool(dataset[i * batch_size: min(len(dataset), (i + 1) * batch_size)], False)  # train=False
         preds = predict_one_step(batch)
         predictions.append(preds)
     predictions = jnp.concatenate(predictions)  # (len(dataset), 1)

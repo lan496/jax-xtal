@@ -28,8 +28,6 @@ class Config:
     train_ratio: float = 0.8
     val_ratio: float = 0.1
     test_ratio: float = 0.1
-    # prediction
-    batch_size_prediction: int = 1024
     # preprocessing
     atom_init_features_path: str = DEFAULT_ATOM_INIT_FEATURES_PATH
     cutoff: float = 8.0
@@ -39,6 +37,7 @@ class Config:
     # misc
     checkpoint_dir: str = "checkpoints"
     log_dir: str = "log"
+    print_freq: int = 10
     seed: int = 0
     n_jobs: int = 1  # workers for preprocessing
 

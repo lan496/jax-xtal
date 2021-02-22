@@ -198,17 +198,18 @@ def main(config: Config):
 
             time_step = time() - lap
             lap = time()
-            logger.debug(
-                f"Epoch [{epoch}][{i + 1}/{steps_per_epoch}]: Loss={metrics['mse']:.4f}, MAE={normalizer.denormalize_MAE(metrics['mae']):.4f}, Time={time_step:.2f} sec/step"
-            )
+            if (i + 1) % config.print_freq == 0:
+                logger.debug(
+                    f"Epoch [{epoch}][{i + 1}/{steps_per_epoch}]: Loss={metrics['mse']:.4f}, MAE={normalizer.denormalize_MAE(metrics['mae']):.4f}, Time={time_step:.2f} sec/step"
+                )
 
         train_summary = get_metrics_mean(train_metrics)
         return params, state, opt_state, train_summary
 
     def eval_model(params: hk.Params, state: hk.State, dataset) -> Metrics:
-        batch_size = config.batch_size_prediction
+        batch_size = config.batch_size
         eval_metrics = []
-        steps_per_epoch = (len(dataset) + batch_size - 1) // batch_size
+        steps_per_epoch = len(dataset) // batch_size
 
         # Prepare batches
         # train=True to get batch['target']
@@ -217,7 +218,7 @@ def main(config: Config):
                 delayed(collate_pool)(
                     [
                         dataset[ii]
-                        for ii in range(i * batch_size, min(len(dataset), (i + 1) * batch_size))
+                        for ii in range(i * batch_size, (i + 1) * batch_size)
                     ],
                     True,
                 )
@@ -238,21 +239,21 @@ def main(config: Config):
         train_loss = train_summary["mse"]
         train_mae = normalizer.denormalize_MAE(train_summary["mae"])
         logger.info(
-            "[Train] epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, train_loss, train_mae)
+            "[Train] epoch: %2d, loss: %.4f, MAE: %.4f eV/atom" % (epoch, train_loss, train_mae)
         )
 
         val_summary = eval_model(params, state, val_dataset)
         val_loss = val_summary["mse"]
         val_mae = normalizer.denormalize_MAE(val_summary["mae"])
         logger.info(
-            "[Eval] epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, val_loss, val_mae)
+            "[Eval] epoch: %2d, loss: %.4f, MAE: %.4f eV/atom" % (epoch, val_loss, val_mae)
         )
         # jax.profiler.save_device_memory_profile(f"memory.{log_basename}.{epoch}.prof")
 
     test_summary = eval_model(params, state, test_dataset)
     test_loss = test_summary["mse"]
     test_mae = normalizer.denormalize_MAE(test_summary["mae"])
-    logger.info("[Test] loss: %.2f, MAE: %.2f eV/atom" % (test_loss, test_mae))
+    logger.info("[Test] loss: %.4f, MAE: %.4f eV/atom" % (test_loss, test_mae))
 
     logger.info("Save checkpoint")
     workdir = config.checkpoint_dir

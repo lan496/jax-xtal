@@ -206,7 +206,7 @@ class CGCNN(hk.Module):
         is_training: bool,
     ):
         atom_features = self._embedding(atom_features)
-        for i in range(self._num_convs):  # TODO: use jax.lax.scan
+        for i in range(self._num_convs):
             atom_features = self._cgconvs[i](
                 neighbor_indices, atom_features, bond_features, is_training
             )
@@ -214,7 +214,7 @@ class CGCNN(hk.Module):
         crystal_features = self._cgpooling(atom_features, segment_ids)
         crystal_features = jax.nn.softplus(crystal_features)
 
-        for i in range(self._num_hidden_layers):  # TODO: use jax.lax.scan
+        for i in range(self._num_hidden_layers):
             crystal_features = self._fcs[i](crystal_features)
             crystal_features = jax.nn.softplus(crystal_features)
         out = self._fc_last(crystal_features)
