@@ -71,11 +71,8 @@ class CGConv(hk.Module):
         )
         total_gated_features = self._cgweight(total_neighbor_features)
         total_gated_features = self._bn1(
-            total_gated_features.reshape(-1, 2 * self._num_atom_features),
-            is_training=is_training,
-        ).reshape(
-            num_atoms_batch, self._max_num_neighbors, 2 * self._num_atom_features
-        )  # TODO: why reshape here?
+            total_gated_features.reshape(-1, 2 * self._num_atom_features), is_training=is_training,
+        ).reshape(num_atoms_batch, self._max_num_neighbors, 2 * self._num_atom_features)
 
         neighbor_filter, neighbor_core = jnp.split(total_gated_features, 2, axis=2)
         neighbor_filter = jax.nn.sigmoid(neighbor_filter)
@@ -98,7 +95,9 @@ class CGPooling(hk.Module):
         super().__init__(name=name)
         self._batch_size = batch_size
 
-    def __call__(self, atom_features: jnp.ndarray, segment_ids: jnp.ndarray, num_atoms: jnp.ndarray):
+    def __call__(
+        self, atom_features: jnp.ndarray, segment_ids: jnp.ndarray, num_atoms: jnp.ndarray
+    ):
         """
         Parameters
         ----------
@@ -108,22 +107,17 @@ class CGPooling(hk.Module):
 
         Returns
         -------
-        averaged_features: (batch_size, 1)
+        averaged_features: (batch_size, num_atom_features)
         """
-        averaged_features = jnp.mean(atom_features, axis=1)  # (N, )
         # sum over each graph
         averaged_features = jax.ops.segment_sum(
-            averaged_features,
+            atom_features,
             segment_ids,
             num_segments=self._batch_size,
             indices_are_sorted=True,
-            unique_indices=False
-        )  # (batch_size, )
-        averaged_features = averaged_features / num_atoms
-        averaged_features = jnp.expand_dims(
-            averaged_features,
-            axis=1
-        )  # (batch_size, 1)
+            unique_indices=False,
+        )  # (batch_size, num_atom_features)
+        averaged_features = averaged_features / num_atoms[:, None]
         return averaged_features
 
 
@@ -232,7 +226,7 @@ def get_model_fn_t(
     num_hidden_layers: int,
     num_hidden_features: int,
     max_num_neighbors: int,
-    batch_size: int
+    batch_size: int,
 ):
     def model_fn(batch: Batch, is_training: bool) -> jnp.ndarray:
         model = CGCNN(
@@ -249,8 +243,10 @@ def get_model_fn_t(
         neighbor_indices = batch["neighbor_indices"]
         atom_features = batch["atom_features"]
         bond_features = batch["bond_features"]
-        num_atoms = batch['num_atoms']
+        num_atoms = batch["num_atoms"]
         segment_ids = batch["segment_ids"]
-        return model(neighbor_indices, atom_features, bond_features, num_atoms, segment_ids, is_training)
+        return model(
+            neighbor_indices, atom_features, bond_features, num_atoms, segment_ids, is_training
+        )
 
     return hk.transform_with_state(model_fn)
