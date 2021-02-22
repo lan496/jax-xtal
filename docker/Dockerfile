@@ -40,7 +40,7 @@ RUN pyenv rehash
 # install jax
 RUN python -m pip install --upgrade pip
 ARG JAX_VERSION=0.2.9
-ARG JAXLIB_VERSION=0.1.59+cuda111
+ARG JAXLIB_VERSION=0.1.61+cuda111
 RUN python -m pip install --upgrade jax==${JAX_VERSION} jaxlib==${JAXLIB_VERSION} -f https://storage.googleapis.com/jax-releases/jax_releases.html
 
 # install pymatgen and others

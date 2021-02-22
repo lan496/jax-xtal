@@ -4,7 +4,7 @@ jax/flax implementation of [Crystal Graph Convolutional Neural Networks (CGCNN)]
 - CUDA 11.1
 - CuDNN 8
 - jax 0.2.9
-- jaxlib 0.1.59
+- jaxlib 0.1.61
 - haiku 0.0.4.dev0
 - python 3.8
 
