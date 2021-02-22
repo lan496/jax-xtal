@@ -31,6 +31,7 @@ def test_cgcnn_forward():
     rng = jax.random.PRNGKey(0)
 
     # Define model
+    batch_size = 2
     model_fn = get_model_fn_t(
         num_initial_atom_features=atom_featurizer.num_initial_atom_features,
         num_atom_features=2,
@@ -39,11 +40,11 @@ def test_cgcnn_forward():
         num_hidden_layers=5,
         num_hidden_features=7,
         max_num_neighbors=max_num_neighbors,
+        batch_size=batch_size,
     )
     model = hk.without_apply_rng(model_fn)
 
     # Initialize model
-    batch_size = 2
     batch = collate_pool(dataset[:batch_size], False)
     rng, init_rng = jax.random.split(rng)
     params, state = model.init(init_rng, batch, is_training=True)

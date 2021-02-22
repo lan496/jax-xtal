@@ -44,6 +44,7 @@ def main(config: Config, ckpt_path: str, structures_dir: str, output: str):
         num_hidden_layers=config.num_hidden_layers,
         num_hidden_features=config.num_hidden_features,
         max_num_neighbors=config.max_num_neighbors,
+        batch_size=config.batch_size,
     )
     model = hk.without_apply_rng(model_fn_t)
 

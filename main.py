@@ -117,6 +117,7 @@ def main(config: Config):
         num_hidden_layers=config.num_hidden_layers,
         num_hidden_features=config.num_hidden_features,
         max_num_neighbors=config.max_num_neighbors,
+        batch_size=config.batch_size
     )
     model = hk.without_apply_rng(model_fn_t)
     optimizer = optax.sgd(config.learning_rate)
@@ -246,7 +247,7 @@ def main(config: Config):
         logger.info(
             "[Eval] epoch: %2d, loss: %.2f, MAE: %.2f eV/atom" % (epoch, val_loss, val_mae)
         )
-        # jax.profiler.save_device_memory_profile(f"memory{epoch}.prof")
+        # jax.profiler.save_device_memory_profile(f"memory.{log_basename}.{epoch}.prof")
 
     test_summary = eval_model(params, state, test_dataset)
     test_loss = test_summary["mse"]

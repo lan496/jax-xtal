@@ -1,5 +1,5 @@
 from functools import partial
-from typing import Any, Mapping
+from typing import Any, Mapping, List
 import math
 
 import haiku as hk
@@ -94,24 +94,34 @@ class CGPooling(hk.Module):
     average-pooling over each crystal in a batch
     """
 
-    def __init__(self, name=None):
+    def __init__(self, batch_size: int, name=None):
         super().__init__(name=name)
+        self._batch_size = batch_size
 
-    def __call__(self, atom_features: jnp.ndarray, atom_indices: jnp.ndarray):
+    def __call__(self, atom_features: jnp.ndarray, segment_ids: jnp.ndarray):
         """
         Parameters
         ----------
         atom_features: (N, num_atom_features)
-        atom_indices: list with batch_size length
+        segment_ids: (N, )
 
         Returns
         -------
         averaged_features: (batch_size, 1)
         """
-        averaged_features = [
-            jnp.mean(atom_features[indices, :], axis=0, keepdims=True) for indices in atom_indices
-        ]
-        averaged_features = jnp.concatenate(averaged_features, axis=0)
+        averaged_features = jnp.mean(atom_features, axis=1)  # (N, )
+        # sum over each graph
+        averaged_features = jax.ops.segment_sum(
+            averaged_features,
+            segment_ids,
+            num_segments=self._batch_size,
+            indices_are_sorted=True,
+            unique_indices=False
+        )
+        averaged_features = jnp.expand_dims(
+            averaged_features,
+            axis=1
+        )  # (batch_size, 1)
         return averaged_features
 
 
@@ -129,6 +139,7 @@ class CGCNN(hk.Module):
         num_hidden_layers: int,
         num_hidden_features: int,
         max_num_neighbors: int,
+        batch_size: int,
         name=None,
     ):
         super().__init__(name=name)
@@ -139,6 +150,7 @@ class CGCNN(hk.Module):
         self._num_hidden_layers = num_hidden_layers
         self._num_hidden_features = num_hidden_features
         self._max_num_neighbors = max_num_neighbors
+        self._batch_size = batch_size
 
         stdv_embedding = 1.0 / math.sqrt(self._num_initial_atom_features)
         w_init_embedding = hk.initializers.RandomUniform(-stdv_embedding, stdv_embedding)
@@ -158,7 +170,7 @@ class CGCNN(hk.Module):
             )
             for i in range(self._num_convs)
         ]
-        self._cgpooling = CGPooling(name="cgpooling")
+        self._cgpooling = CGPooling(batch_size=self._batch_size, name="cgpooling")
 
         stdv_fc_first = 1.0 / math.sqrt(self._num_atom_features)
         w_init_fc_first = hk.initializers.RandomUniform(-stdv_fc_first, stdv_fc_first)
@@ -190,18 +202,19 @@ class CGCNN(hk.Module):
         neighbor_indices: jnp.ndarray,
         atom_features: jnp.ndarray,
         bond_features: jnp.ndarray,
-        atom_indices: jnp.ndarray,
+        segment_ids: List[jnp.ndarray],
         is_training: bool,
     ):
         atom_features = self._embedding(atom_features)
-        for i in range(self._num_convs):
+        for i in range(self._num_convs):  # TODO: use jax.lax.scan
             atom_features = self._cgconvs[i](
                 neighbor_indices, atom_features, bond_features, is_training
             )
 
-        crystal_features = self._cgpooling(atom_features, atom_indices)
+        crystal_features = self._cgpooling(atom_features, segment_ids)
         crystal_features = jax.nn.softplus(crystal_features)
-        for i in range(self._num_hidden_layers):
+
+        for i in range(self._num_hidden_layers):  # TODO: use jax.lax.scan
             crystal_features = self._fcs[i](crystal_features)
             crystal_features = jax.nn.softplus(crystal_features)
         out = self._fc_last(crystal_features)
@@ -216,6 +229,7 @@ def get_model_fn_t(
     num_hidden_layers: int,
     num_hidden_features: int,
     max_num_neighbors: int,
+    batch_size: int
 ):
     def model_fn(batch: Batch, is_training: bool) -> jnp.ndarray:
         model = CGCNN(
@@ -226,12 +240,13 @@ def get_model_fn_t(
             num_hidden_layers=num_hidden_layers,
             num_hidden_features=num_hidden_features,
             max_num_neighbors=max_num_neighbors,
+            batch_size=batch_size,
             name="cgcnn",
         )
         neighbor_indices = batch["neighbor_indices"]
         atom_features = batch["atom_features"]
         bond_features = batch["bond_features"]
-        atom_indices = batch["atom_indices"]
-        return model(neighbor_indices, atom_features, bond_features, atom_indices, is_training)
+        segment_ids = batch["segment_ids"]
+        return model(neighbor_indices, atom_features, bond_features, segment_ids, is_training)
 
     return hk.transform_with_state(model_fn)
