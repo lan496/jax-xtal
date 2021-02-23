@@ -1,9 +1,6 @@
 import os
 import argparse
-from logging import StreamHandler, DEBUG, Formatter, FileHandler, getLogger
-import random
 
-import numpy as np
 import haiku as hk
 
 from jax_xtal.data import (
@@ -15,35 +12,11 @@ from jax_xtal.data import (
 from jax_xtal.train_utils import (
     Normalizer,
     save_checkpoint,
+    seed_everything,
+    get_module_logger,
 )
 from jax_xtal.config import load_config, Config
 from jax_xtal.train import train_and_eval
-
-
-def seed_everything(seed: int):
-    random.seed(seed)
-    os.environ["PYTHONHASHSEED"] = str(seed)
-    np.random.seed(seed)
-
-
-def get_module_logger(modname, log_path):
-    logger = getLogger(modname)
-
-    log_fmt = Formatter(
-        "%(asctime)s %(name)s %(lineno)d [%(levelname)s][%(funcName)s] %(message)s "
-    )
-    handler = StreamHandler()
-    handler.setLevel("INFO")
-    handler.setFormatter(log_fmt)
-    logger.addHandler(handler)
-
-    handler = FileHandler(log_path, "a")
-    handler.setLevel(DEBUG)
-    handler.setFormatter(log_fmt)
-    logger.setLevel(DEBUG)
-    logger.addHandler(handler)
-
-    return logger
 
 
 def main(config: Config):

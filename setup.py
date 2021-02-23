@@ -1,5 +1,5 @@
 from os.path import splitext, basename
-from setuptools import setup, Extension, find_packages
+from setuptools import setup, find_packages
 from glob import glob
 
 
@@ -17,7 +17,16 @@ setup(
     packages=find_packages("jax_xtal"),
     py_modules=[splitext(basename(path))[0] for path in glob("jax_xtal/*.py")],
     python_requires=">=3.7",
-    install_requires=["setuptools", "jax", "jaxlib", "dm-haiku", "optax", "numpy", "pymatgen",],
+    install_requires=[
+        "setuptools",
+        "jax",
+        "jaxlib",
+        "dm-haiku",
+        "optax",
+        "numpy",
+        "pymatgen",
+        "optuna",
+    ],
     tests_require=["pytest"],
     include_package_data=True,
     extras_requires={},

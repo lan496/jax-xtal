@@ -1,10 +1,8 @@
 import os
-from typing import Any
-from time import time
-from logging import getLogger
-from functools import partial
 from typing import Mapping, List, Tuple
+from logging import StreamHandler, DEBUG, Formatter, FileHandler, getLogger
 import pickle
+import random
 
 import haiku as hk
 import numpy as np
@@ -81,3 +79,29 @@ def get_metrics_mean(list_metrics: List[Metrics]) -> Metrics:
     summary = jax.device_put(list_metrics)
     summary = jax.tree_map(lambda x: x.mean(), list_metrics)[0]
     return summary
+
+
+def seed_everything(seed: int):
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    np.random.seed(seed)
+
+
+def get_module_logger(modname, log_path):
+    logger = getLogger(modname)
+
+    log_fmt = Formatter(
+        "%(asctime)s %(name)s %(lineno)d [%(levelname)s][%(funcName)s] %(message)s "
+    )
+    handler = StreamHandler()
+    handler.setLevel("INFO")
+    handler.setFormatter(log_fmt)
+    logger.addHandler(handler)
+
+    handler = FileHandler(log_path, "a")
+    handler.setLevel(DEBUG)
+    handler.setFormatter(log_fmt)
+    logger.setLevel(DEBUG)
+    logger.addHandler(handler)
+
+    return logger

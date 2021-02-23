@@ -1,9 +1,10 @@
 jax==0.2.9
-jaxlib==0.1.59
+jaxlib==0.1.61
 numpy
 pymatgen==2020.12.31
 dataclasses-json
 tqdm
 joblib
+optuna
 optax
 -e git+https://github.com/deepmind/dm-haiku#egg=dm-haiku

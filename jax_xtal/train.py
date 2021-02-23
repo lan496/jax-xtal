@@ -73,7 +73,7 @@ def train_and_eval(
     byte_size = hk.data_structures.tree_bytes(params)  # size with f32
     logger.info(f"{num_params} params, size={byte_size/1e6:.2f}MB")
 
-    print(jax.tree_util.tree_map(lambda x: x.shape, params))
+    # print(jax.tree_util.tree_map(lambda x: x.shape, params))
 
     # Loss function
     @jax.jit
